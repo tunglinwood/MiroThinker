@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme {
+  /* Dark mode first palette - inspired by dr.miromind.ai */
+  --color-background: #0f1117;
+  --color-background-secondary: #161822;
+  --color-surface: #1a1d2e;
+  --color-surface-hover: #222640;
+  --color-border: #2a2f45;
+  --color-border-hover: #3d4466;
+
+  --color-text-primary: #e8eaf0;
+  --color-text-secondary: #9ca3b8;
+  --color-text-muted: #6b7280;
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-accent-muted: rgba(99, 102, 241, 0.15);
+
+  /* Tool type colors */
+  --color-search: #3b82f6;
+  --color-search-bg: rgba(59, 130, 246, 0.1);
+  --color-code: #a855f7;
+  --color-code-bg: rgba(168, 85, 247, 0.1);
+  --color-read: #22c55e;
+  --color-read-bg: rgba(34, 197, 94, 0.1);
+  --color-reasoning: #f59e0b;
+  --color-reasoning-bg: rgba(245, 158, 11, 0.1);
+
+  /* Status colors */
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+
+  /* Animations */
+  --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.3s ease-out;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Base styles */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* Markdown content styling */
+.markdown-content h1 { @apply text-2xl font-bold mb-4 text-text-primary; }
+.markdown-content h2 { @apply text-xl font-bold mb-3 text-text-primary; }
+.markdown-content h3 { @apply text-lg font-bold mb-2 text-text-primary; }
+.markdown-content p { @apply mb-3 text-text-secondary; }
+.markdown-content ul { @apply list-disc list-inside mb-3 text-text-secondary; }
+.markdown-content ol { @apply list-decimal list-inside mb-3 text-text-secondary; }
+.markdown-content li { @apply mb-1; }
+.markdown-content code { @apply bg-surface px-1.5 py-0.5 rounded text-sm text-accent; }
+.markdown-content pre { @apply bg-surface p-4 rounded-lg mb-3 overflow-x-auto border border-border; }
+.markdown-content pre code { @apply bg-transparent p-0 text-text-primary; }
+.markdown-content a { @apply text-accent hover:underline; }
+.markdown-content blockquote { @apply border-l-4 border-border pl-4 italic text-text-muted; }
+.markdown-content table { @apply w-full border-collapse mb-4; }
+.markdown-content th { @apply bg-surface border border-border px-3 py-2 text-left text-text-primary; }
+.markdown-content td { @apply border border-border px-3 py-2 text-text-secondary; }

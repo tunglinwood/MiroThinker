@@ -11,9 +11,9 @@ from fastmcp import FastMCP
 
 logger = logging.getLogger("miroflow")
 
-REASONING_API_KEY = os.environ.get("REASONING_API_KEY")
-REASONING_BASE_URL = os.environ.get("REASONING_BASE_URL")
-REASONING_MODEL_NAME = os.environ.get("REASONING_MODEL_NAME")
+REASONING_API_KEY = os.environ.get("REASONING_API_KEY", "not-needed")
+REASONING_BASE_URL = os.environ.get("REASONING_BASE_URL", "http://localhost:8001/v1/chat/completions")
+REASONING_MODEL_NAME = os.environ.get("REASONING_MODEL_NAME", "qwen3.5")
 
 # Initialize FastMCP server
 mcp = FastMCP("reasoning-mcp-server-os")

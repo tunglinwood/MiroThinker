@@ -1,0 +1,18 @@
+# OpenClaw Gateway as LLM Provider
+# Uses the local OpenClaw gateway at 174.1.21.1:18789
+
+defaults:
+  - default
+  - _self_
+
+provider: "openai"
+model_name: "bailian/qwen3.5-plus"
+base_url: "http://174.1.21.1:18789/v1"
+api_key: "85c86c58484763627d1147b27f4d837b314e22db5cbe033f"
+extra_headers:
+  x-openclaw-agent-id: "main"
+max_context_length: 1000000
+max_tokens: 60000
+temperature: 0.3
+top_p: 1.0
+repetition_penalty: 1.0

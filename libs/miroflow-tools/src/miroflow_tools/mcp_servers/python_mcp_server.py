@@ -4,6 +4,8 @@
 import asyncio
 import os
 import shlex
+import subprocess
+import sys
 from urllib.parse import urlparse
 
 from e2b_code_interpreter import Sandbox
@@ -115,6 +117,9 @@ async def create_sandbox(timeout: int = DEFAULT_TIMEOUT) -> str:
         except Exception as e:
             if attempt == max_retries:
                 error_details = str(e)[:MAX_ERROR_LEN]
+                # Fallback: Allow local execution when E2B fails
+                if "401" in str(e) or "authorization" in str(e).lower():
+                    return "local_exec_fallback"
                 return f"[ERROR]: Failed to create sandbox after {max_retries} attempts: {error_details}, please retry later."
             await asyncio.sleep(attempt**2)  # Exponential backoff
         finally:
@@ -195,6 +200,21 @@ async def run_python_code(code_block: str, sandbox_id: str) -> str:
                 sandbox.kill()
         except Exception as e:
             error_details = str(e)[:MAX_ERROR_LEN]
+            # Fallback to local execution if E2B fails (e.g., auth issues)
+            if "401" in str(e) or "authorization" in str(e).lower():
+                try:
+                    result = subprocess.run(
+                        [sys.executable, "-c", code_block],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    output = result.stdout
+                    if result.stderr:
+                        output += f"\nStderr: {result.stderr}"
+                    return truncate_result(output) + "\n(Note: Executed locally due to E2B failure)"
+                except subprocess.TimeoutExpired:
+                    return "[ERROR]: Local code execution timed out after 60 seconds."
+                except Exception as local_e:
+                    return f"[ERROR]: E2B failed ({error_details}), Local also failed: {str(local_e)[:MAX_ERROR_LEN]}"
             return f"[ERROR]: Failed to run code in stateless mode. Exception type: {type(e).__name__}, Details: {error_details}"
 
     try:

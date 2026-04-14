@@ -1,0 +1,215 @@
+# Copyright (c) 2025 MiroMind
+# This source code is licensed under the Apache 2.0 License.
+
+"""Task state management for MiroThinker API."""
+
+import json
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from api.models.task import TaskResponse, TaskStatus
+
+
+class TaskManager:
+    """Manages task state with in-memory cache and file persistence."""
+
+    def __init__(self, log_dir: str = "logs/debug"):
+        self._tasks: Dict[str, TaskResponse] = {}
+        self._lock = threading.RLock()
+        self._log_dir = Path(log_dir)
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+
+    def create_task(
+        self,
+        task_id: str,
+        task_description: str,
+        agent_config: str,
+        llm_config: str,
+        file_path: Optional[str] = None,
+    ) -> TaskResponse:
+        """Create a new task and register it."""
+        now = datetime.now()
+        task = TaskResponse(
+            id=task_id,
+            task_description=task_description,
+            agent_config=agent_config,
+            llm_config=llm_config,
+            status="pending",
+            created_at=now,
+            updated_at=now,
+            current_turn=0,
+            max_turns=200,  # Default, will be updated from config
+            step_count=0,
+            final_answer=None,
+            summary=None,
+            error_message=None,
+            file_info=None,
+            log_path=None,
+        )
+
+        with self._lock:
+            self._tasks[task_id] = task
+
+        return task
+
+    def get_task(self, task_id: str) -> Optional[TaskResponse]:
+        """Get a task by ID."""
+        with self._lock:
+            return self._tasks.get(task_id)
+
+    def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[TaskResponse]:
+        """Update a task with new data."""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return None
+
+            # Update fields
+            for key, value in updates.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+
+            # Always update updated_at
+            task.updated_at = datetime.now()
+
+            self._tasks[task_id] = task
+            return task
+
+    def set_status(self, task_id: str, status: TaskStatus) -> Optional[TaskResponse]:
+        """Set task status."""
+        return self.update_task(task_id, {"status": status})
+
+    def list_tasks(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        status_filter: Optional[TaskStatus] = None,
+    ) -> tuple[List[TaskResponse], int]:
+        """List tasks with pagination and optional status filter."""
+        with self._lock:
+            tasks = list(self._tasks.values())
+
+            # Filter by status if specified
+            if status_filter:
+                tasks = [t for t in tasks if t.status == status_filter]
+
+            # Sort by created_at descending (newest first)
+            tasks.sort(key=lambda t: t.created_at, reverse=True)
+
+            # Get total before pagination
+            total = len(tasks)
+
+            # Paginate
+            start = (page - 1) * page_size
+            end = start + page_size
+            tasks = tasks[start:end]
+
+            return tasks, total
+
+    def delete_task(self, task_id: str) -> bool:
+        """Delete a task."""
+        with self._lock:
+            if task_id in self._tasks:
+                del self._tasks[task_id]
+                return True
+            return False
+
+    def get_all_task_ids(self) -> List[str]:
+        """Get all task IDs."""
+        with self._lock:
+            return list(self._tasks.keys())
+
+    def find_log_file(self, task_id: str) -> Optional[Path]:
+        """Find the log file for a task."""
+        # Log files are named like: task_task_example_2026-04-08-14-00-00.json
+        # We need to find the one that contains the task_id
+        if not self._log_dir.exists():
+            return None
+
+        # Try to find by pattern matching
+        for log_file in self._log_dir.glob("task_*.json"):
+            try:
+                with open(log_file, "r") as f:
+                    data = json.load(f)
+                    if data.get("task_id") == task_id:
+                        return log_file
+            except (json.JSONDecodeError, IOError):
+                continue
+
+        return None
+
+    def read_log_file(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Read and parse a task's log file."""
+        log_file = self.find_log_file(task_id)
+        if not log_file:
+            return None
+
+        try:
+            with open(log_file, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None
+
+    def get_progress_from_log(self, task_id: str) -> Dict[str, Any]:
+        """Extract progress information from log file."""
+        log_data = self.read_log_file(task_id)
+        if not log_data:
+            return {
+                "current_turn": 0,
+                "step_count": 0,
+                "recent_logs": [],
+                "messages": [],
+            }
+
+        step_logs = log_data.get("step_logs", [])
+        current_turn = log_data.get("current_main_turn_id", 0)
+
+        # Get recent logs (last 10)
+        recent_logs = step_logs[-10:] if step_logs else []
+
+        # Extract messages from main_agent_message_history
+        messages = []
+        msg_history = log_data.get("main_agent_message_history", {})
+        if isinstance(msg_history, dict):
+            history_list = msg_history.get("message_history", [])
+            for msg in history_list[-20:]:  # Last 20 messages
+                if isinstance(msg, dict):
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    # Handle list content (multi-part)
+                    if isinstance(content, list):
+                        text_parts = []
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text_parts.append(item.get("text", ""))
+                        content = "\n".join(text_parts)
+                    elif not isinstance(content, str):
+                        content = str(content)
+                    messages.append({"role": role, "content": content})
+
+        return {
+            "current_turn": current_turn,
+            "step_count": len(step_logs),
+            "recent_logs": recent_logs,
+            "messages": messages,
+        }
+
+    def get_final_result_from_log(self, task_id: str) -> Dict[str, Any]:
+        """Extract final result from log file."""
+        log_data = self.read_log_file(task_id)
+        if not log_data:
+            return {
+                "final_answer": None,
+                "summary": None,
+                "error": "Log file not found",
+            }
+
+        return {
+            "final_answer": log_data.get("final_boxed_answer"),
+            "summary": None,  # Summary is generated at the end, may not be in log
+            "error": log_data.get("error"),
+            "status": log_data.get("status", "unknown"),
+            "end_time": log_data.get("end_time"),
+        }

@@ -1,0 +1,76 @@
+services:
+  # ============================================================
+  # Search & Scraping (local, zero API key)
+  # ============================================================
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    ports:
+      - "8080:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+    networks:
+      - mirothinker
+
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: crawl4ai
+    ports:
+      - "11235:11235"
+    shm_size: 1g
+    networks:
+      - mirothinker
+
+  # ============================================================
+  # MiroFlow Agent API
+  # ============================================================
+  miroflow-api:
+    build:
+      context: .
+      dockerfile: apps/miroflow-agent/Dockerfile
+    container_name: miroflow-api
+    ports:
+      - "8002:8002"
+    env_file:
+      - apps/miroflow-agent/.env
+    environment:
+      # Override service URLs for Docker internal DNS
+      - SEARXNG_BASE_URL=http://searxng:8080
+      - SEARXNG_ENABLED=true
+      - CRAWL4AI_BASE_URL=http://crawl4ai:11235
+      - CRAWL4AI_ENABLED=true
+      # Microsandbox Docker (runs on host)
+      - MICROSANDBOX_IMAGE=microsandbox/python:latest
+    depends_on:
+      - searxng
+      - crawl4ai
+    networks:
+      - mirothinker
+    # Allow reaching external LLM on host LAN
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # ============================================================
+  # MiroThinker Web (Next.js)
+  # ============================================================
+  mirothinker-web:
+    build:
+      context: ./apps/mirothinker-web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://miroflow-api:8002
+    container_name: mirothinker-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://miroflow-api:8002
+    depends_on:
+      - miroflow-api
+    networks:
+      - mirothinker
+    restart: unless-stopped
+
+networks:
+  mirothinker:
+    driver: bridge

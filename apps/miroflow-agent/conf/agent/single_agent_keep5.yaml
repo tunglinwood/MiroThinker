@@ -9,10 +9,9 @@ main_agent:
   tools:
     - search_and_scrape_webpage
     - jina_scrape_llm_summary
-    - tool-python
+    - microsandbox-docker        # Local Docker code execution (no API key)
   tool_blacklist:
     - [ "search_and_scrape_webpage", "sogou_search" ]
-    - [ "tool-python", "download_file_from_sandbox_to_local" ]
   max_turns: 600  # Maximum number of turns for main agent execution
 
 sub_agents:

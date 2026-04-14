@@ -1,6 +1,6 @@
 # conf/config.yaml
 defaults:
-  - llm: default
+  - llm: local-qwen35
   - agent: default
   - benchmark: default
   - _self_  # Allows variables to be defined at the top of this file

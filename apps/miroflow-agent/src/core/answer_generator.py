@@ -146,10 +146,11 @@ class AnswerGenerator:
                 response, assistant_response_text
             )
 
+            llm_preview = assistant_response_text if assistant_response_text else "completed successfully"
             self.task_log.log_step(
                 "info",
                 f"{purpose} | LLM Call",
-                "completed successfully",
+                llm_preview,
             )
             return (
                 assistant_response_text,

@@ -43,9 +43,12 @@ dependencies = [
     "google-genai",
     "tiktoken>=0.9.0",
     "aiohttp",
+    "sse-starlette>=2.1.0",
     "colorama>=0.4.6",
     "json-repair>=0.49.0",
-    "tencentcloud-sdk-python>=3.0.1451"
+    "tencentcloud-sdk-python>=3.0.1451",
+    "fastapi>=0.135.3",
+    "uvicorn>=0.35.0",
 ]
 
 [build-system]

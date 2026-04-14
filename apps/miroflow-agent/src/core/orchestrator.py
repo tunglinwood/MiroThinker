@@ -570,7 +570,7 @@ class Orchestrator:
                     self.task_log.log_step(
                         "info",
                         f"{sub_agent_name} | Turn: {turn_count} | Tool Call",
-                        f"Tool {tool_name} completed in {call_duration_ms}ms",
+                        f"Tool {tool_name} completed in {call_duration_ms}ms\nResult: {result}",
                     )
 
                     tool_calls_data.append(
@@ -1055,7 +1055,7 @@ class Orchestrator:
                     self.task_log.log_step(
                         "info",
                         f"Main Agent | Turn: {turn_count} | Tool Call",
-                        f"Tool {tool_name} completed in {call_duration_ms}ms",
+                        f"Tool {tool_name} completed in {call_duration_ms}ms\nResult: {result}",
                     )
 
                 except Exception as e:

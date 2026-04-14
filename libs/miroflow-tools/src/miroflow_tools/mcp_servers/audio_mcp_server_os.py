@@ -15,9 +15,9 @@ from fastmcp import FastMCP
 from mutagen import File as MutagenFile
 from openai import OpenAI
 
-WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY")
-WHISPER_BASE_URL = os.environ.get("WHISPER_BASE_URL")
-WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL_NAME")
+WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "not-needed")
+WHISPER_BASE_URL = os.environ.get("WHISPER_BASE_URL", "http://localhost:8001/v1")
+WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL_NAME", "qwen3.5")
 
 # Initialize FastMCP server
 mcp = FastMCP("audio-mcp-server-os")

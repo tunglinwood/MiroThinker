@@ -1,0 +1,24 @@
+# conf/agent/mirothinker_1.7_microsandbox.yaml
+# MiroThinker 1.7 - Fully Local Zero-API-Key Setup
+# Tools: SearXNG (search), Crawl4AI (scraping), Microsandbox Docker (code), qwen3.5 (vision/reasoning)
+defaults:
+  - default
+  - _self_
+
+main_agent:
+  tools:
+    - tool-searxng-search        # Local SearXNG search (no API key)
+    - tool-crawl4ai              # Local Crawl4AI scraping (no API key)
+    - microsandbox-docker        # Docker-based Python sandbox (no API key)
+    - tool-vqa-os                # Local vision LLM (qwen3.5 at http://localhost:8001/v1)
+    - tool-reasoning-os          # Local reasoning model (qwen3.5)
+  tool_blacklist:
+    - [ "tool-searxng-search", "sogou_search" ]
+  max_turns: 200
+
+sub_agents:
+
+# Context management
+keep_tool_result: 5
+context_compress_limit: 5
+retry_with_summary: False

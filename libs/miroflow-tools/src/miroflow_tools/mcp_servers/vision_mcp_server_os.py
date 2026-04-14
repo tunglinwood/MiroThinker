@@ -8,9 +8,9 @@ import aiohttp
 import requests
 from fastmcp import FastMCP
 
-VISION_API_KEY = os.environ.get("VISION_API_KEY")
-VISION_BASE_URL = os.environ.get("VISION_BASE_URL")
-VISION_MODEL_NAME = os.environ.get("VISION_MODEL_NAME")
+VISION_API_KEY = os.environ.get("VISION_API_KEY", "not-needed")
+VISION_BASE_URL = os.environ.get("VISION_BASE_URL", "http://localhost:8001/v1/chat/completions")
+VISION_MODEL_NAME = os.environ.get("VISION_MODEL_NAME", "qwen3.5")
 
 # Initialize FastMCP server
 mcp = FastMCP("vision-mcp-server-os")

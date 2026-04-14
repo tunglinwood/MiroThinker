@@ -28,8 +28,9 @@ async def amain(cfg: DictConfig) -> None:
     )
 
     # Define task parameters
+    import os
     task_id = "task_example"
-    task_description = "What is the title of today's arxiv paper in computer science?"
+    task_description = os.environ.get("TASK", "Dorzagliatin clinical trials results")
     task_file_name = ""
 
     # Execute task using the pipeline

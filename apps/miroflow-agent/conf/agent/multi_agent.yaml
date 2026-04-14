@@ -7,20 +7,19 @@ defaults:
 
 main_agent:
   tools:
-    - tool-python
-    - tool-vqa
-    - tool-transcribe
-    - tool-reasoning
+    - microsandbox-docker        # Local Docker code execution (no API key)
+    - tool-vqa-os                # Local vision LLM (http://localhost:8001/v1)
+    - tool-reasoning-os          # Local reasoning model (http://localhost:8001/v1)
     - tool-reader
   max_turns: 50  # Maximum number of turns for main agent execution
 
 sub_agents:
   agent-browsing:
     tools:
-      - tool-google-search
-      - tool-vqa
+      - tool-searxng-search
+      - tool-vqa-os              # Local vision LLM (http://localhost:8001/v1)
       - tool-reader
-      - tool-python
+      - microsandbox-docker      # Local Docker code execution (no API key)
     max_turns: 50
 
 # Settings for context management

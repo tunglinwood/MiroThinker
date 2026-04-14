@@ -159,6 +159,52 @@ Here are the functions available in JSONSchema format:
 
 You accomplish a given task iteratively, breaking it down into clear steps and working through them methodically.
 
+# CRITICAL TOOL USAGE RULES
+
+You MUST use tools when:
+1. You don't know the answer or have limited information
+2. The question requires current or specific data (prices, dates, events, etc.)
+3. You need to verify information from authoritative sources
+4. The task requires computation or code execution
+
+When you need to use a tool, you MUST call it - do NOT try to answer from memory alone if you're uncertain.
+
+## Tool-Use Requirement
+- If you are unsure about ANY piece of information, you MUST use a search tool (searxng, serper) to find current data
+- If you need to browse a specific URL for content, use the tool-reader (convert_to_markdown)
+- If you need to run code for calculation or data processing, use tool-python
+- NEVER guess or make up information - always search or browse to verify
+
+The available search tools include:
+- searxng: Local privacy-respecting search engine at http://127.0.0.1:8088
+- search_and_browse (MCP): Web search and browsing agent
+
+# OUTPUT FORMAT
+
+When asked to research a compound, drug, or pharmaceutical molecule, you MUST output your findings in the following JSON format:
+
+{
+  "chem_name": "COMPOUND_NAME",
+  "company": "Company Name",
+  "stage": "Development stage",
+  "chemical_identifiers": {
+    "pubchem_cid": "PubChem CID or null",
+    "smiles": "SMILES or null",
+    "inchikey": "InChIKey or null",
+    "iupac": "IUPAC name or null",
+    "molecular_weight": "MW or null",
+    "notes": "Additional notes"
+  },
+  "clinical_trials": [{"nct": "NCT number", "phase": "Phase", "title": "Title"}],
+  "patents": [],
+  "pubmed_papers": [{"pmid": "PMID", "title": "Title", "year": "Year"}],
+  "suppliers": [],
+  "key_findings": "Key findings",
+  "data_quality": "complete|partial|none",
+  "notes": "Notes"
+}
+
+Output ONLY valid JSON in this exact format. Do not include any other text.
 """
 
     return template
@@ -233,7 +279,7 @@ Do not infer, speculate, summarize broadly, or attempt to fill in missing parts 
     return system_prompt.strip()
 
 
-def generate_agent_summarize_prompt(task_description, agent_type=""):
+def generate_agent_summarize_prompt(task_description, agent_type="", task_format="auto"):
     """
     Generate the final summarization prompt for an agent.
 
@@ -241,15 +287,54 @@ def generate_agent_summarize_prompt(task_description, agent_type=""):
     final answers. Different agent types have different summarization formats:
     - main: Must wrap answer in \\boxed{} with strict formatting rules
     - agent-browsing: Provides structured report of findings
+    - research: Provides comprehensive written summary (for research tasks)
 
     Args:
         task_description: The original task/question to reference in the summary
         agent_type: Type of agent ("main" or "agent-browsing")
+        task_format: Format type ("auto", "benchmark", "research")
+            - "auto": Auto-detect based on task keywords
+            - "benchmark": Strict \\boxed{} format for evaluations
+            - "research": Free-form text summary for research tasks (DEFAULT)
 
     Returns:
         Summarization prompt string with formatting instructions
     """
-    if agent_type == "main":
+    # Auto-detect format based on task description keywords - default to research
+    if task_format == "auto":
+        research_keywords = ["explain", "find", "search", "results", "information", 
+                            "what is", "how does", "describe", "summarize", "report",
+                            "clinical", "trials", "science", "research", "study"]
+        benchmark_keywords = ["calculate", "solve", "compute", "value", "number", "result"]
+        
+        task_lower = task_description.lower() if task_description else ""
+        is_research = any(kw in task_lower for kw in research_keywords)
+        is_benchmark = any(kw in task_lower for kw in benchmark_keywords)
+        
+        # Default to research for most tasks
+        if is_benchmark and not is_research:
+            task_format = "benchmark"
+        else:
+            task_format = "research"
+    
+    if agent_type == "main" and task_format == "research":
+        # Research task prompt - allows free-form text summary
+        summarize_prompt = (
+            "You have completed the research task. Provide a comprehensive summary of your findings.\n\n"
+            f"Original Question: {task_description}\n\n"
+            "Based on the information gathered during your research, provide a clear, well-structured summary that includes:\n"
+            "1. Key findings and main results\n"
+            "2. Important data, statistics, or figures (if applicable)\n"
+            "3. Any conclusions or insights\n"
+            "4. Sources or references (if found)\n\n"
+            "Write your response in clear, professional language suitable for a research report.\n"
+            "Do NOT use \\boxed{} format - provide a natural text summary.\n"
+            "If the task was to find specific information, include all relevant details found.\n"
+            "If you could not find complete information, indicate what was found and any gaps.\n"
+            "Do NOT make up information that was not found in your research.\n\n"
+            "Provide your final summary now."
+        )
+    elif agent_type == "main" and task_format == "benchmark":
         summarize_prompt = (
             "Summarize the above conversation, and output the FINAL ANSWER to the original question.\n\n"
             "If a clear answer has already been provided earlier in the conversation, do not rethink or recalculate it — "
