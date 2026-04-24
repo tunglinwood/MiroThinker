@@ -390,6 +390,7 @@ class Orchestrator:
         while turn_count < max_turns and total_attempts < max_attempts:
             turn_count += 1
             total_attempts += 1
+            self.task_log.current_main_turn_id = turn_count
 
             if consecutive_rollbacks >= self.MAX_CONSECUTIVE_ROLLBACKS:
                 self.task_log.log_step(
@@ -812,6 +813,7 @@ class Orchestrator:
         while turn_count < max_turns and total_attempts < max_attempts:
             turn_count += 1
             total_attempts += 1
+            self.task_log.current_main_turn_id = turn_count
 
             if consecutive_rollbacks >= self.MAX_CONSECUTIVE_ROLLBACKS:
                 self.task_log.log_step(

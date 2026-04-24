@@ -1,16 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listTasks, createTask, deleteTask, getTaskStatus, listConfigs, uploadFile } from '@/lib/api';
+import { listTasks, createTask, deleteTask, getTaskStatus, listConfigs, uploadFile, getTaskTelemetry, getStoredUser, logout } from '@/lib/api';
 import { useSSE } from '@/lib/sse';
 import { usePolling } from '@/lib/use-polling';
-import type { TaskStatusUpdate, UploadResponse, Task } from '@/lib/types';
+import { simpleMarkdownToHtml } from '@/lib/markdown';
+import type { TaskStatusUpdate, UploadResponse, Task, TaskTelemetry, ToolCallTelemetry, Message, LogEntry } from '@/lib/types';
 import { Sidebar } from '@/components/sidebar';
 import { ChatInput } from '@/components/chat-input';
-import { Timeline } from '@/components/timeline';
+import { TurnTimeline } from '@/components/turn-timeline';
+import { TaskOverview } from '@/components/task-overview';
+import { ActivityLog } from '@/components/activity-log';
 import { WelcomeScreen } from '@/components/welcome-screen';
-import { Bot, PanelLeftClose, PanelLeft, Square } from 'lucide-react';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { Bot, PanelLeftClose, PanelLeft, Square, LogOut } from 'lucide-react';
 
 export default function Home() {
   const queryClient = useQueryClient();
@@ -19,6 +23,18 @@ export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<UploadResponse | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [accumulatedMessages, setAccumulatedMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [username, setUsername] = useState<string | null>(null);
+
+  // Auth check: redirect if no token
+  useEffect(() => {
+    const token = localStorage.getItem('mirothinker_token');
+    const user = localStorage.getItem('mirothinker_user');
+    if (!token) {
+      window.location.href = '/login';
+      return;
+    }
+    setUsername(user);
+  }, []);
 
   // Fetch configs
   const { data: configData } = useQuery({
@@ -43,28 +59,46 @@ export default function Home() {
   const isSelectedTaskActive = selectedTask?.status === 'pending' || selectedTask?.status === 'running';
   const isSelectedTaskCompleted = ['completed', 'failed', 'cancelled'].includes(selectedTask?.status || '');
 
+  // Stable callbacks for hooks (prevent infinite re-render loops)
+  const handleSSEComplete = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['task', selectedTaskId] });
+  }, [queryClient, selectedTaskId]);
+
+  const fetchTaskStatus = useCallback(() => getTaskStatus(selectedTaskId!), [selectedTaskId]);
+
+  const shouldStopPolling = useCallback(
+    (data: TaskStatusUpdate) => ['completed', 'failed', 'cancelled'].includes(data.status),
+    []
+  );
+
   // SSE for real-time streaming
-  const { data: sseData, connected: sseConnected } = useSSE({
+  const { data: sseData, connected: sseConnected, toolCalls: sseToolCalls } = useSSE({
     taskId: isActive(selectedTask) ? selectedTask!.id : null,
     enabled: isActive(selectedTask),
-    onComplete: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['task', selectedTaskId] });
-    },
+    onComplete: handleSSEComplete,
   });
 
   // Polling fallback
   const { data: polledData } = usePolling<TaskStatusUpdate>({
-    fetcher: () => getTaskStatus(selectedTaskId!),
+    fetcher: fetchTaskStatus,
     interval: 3000,
     enabled: isActive(selectedTask) && !sseConnected,
-    shouldStop: (data) => ['completed', 'failed', 'cancelled'].includes(data.status),
+    shouldStop: shouldStopPolling,
   });
 
   // Fetch completed task status for messages
   const { data: completedStatus } = useQuery({
     queryKey: ['taskStatus', selectedTaskId],
     queryFn: () => getTaskStatus(selectedTaskId!),
+    enabled: !!selectedTaskId && isSelectedTaskCompleted,
+    staleTime: Infinity,
+  });
+
+  // Fetch telemetry for completed tasks
+  const { data: telemetry } = useQuery({
+    queryKey: ['telemetry', selectedTaskId],
+    queryFn: () => getTaskTelemetry(selectedTaskId!),
     enabled: !!selectedTaskId && isSelectedTaskCompleted,
     staleTime: Infinity,
   });
@@ -93,6 +127,54 @@ export default function Home() {
   const messages = isActive(selectedTask)
     ? accumulatedMessages
     : completedStatus?.messages || accumulatedMessages || [];
+
+  // Build turn data from telemetry
+  const turnData = useMemo(() => {
+    if (!telemetry) return [];
+    return telemetry.turns.map((turn) => ({
+      turn: turn.turn,
+      messages: [] as Message[],
+      toolCalls: turn.tool_calls,
+      input_tokens: turn.input_tokens,
+      output_tokens: turn.output_tokens,
+      context_tokens: turn.context_tokens,
+      context_limit: turn.context_limit,
+    }));
+  }, [telemetry]);
+
+  // Build log entries from SSE or telemetry
+  const logEntries = useMemo((): LogEntry[] => {
+    const entries: LogEntry[] = [];
+
+    // From SSE logs
+    if (currentStatus && 'recent_logs' in currentStatus) {
+      const logs = (currentStatus as TaskStatusUpdate).recent_logs || [];
+      for (const log of logs) {
+        entries.push({
+          type: log.type || 'tool_call',
+          tool_name: log.tool_name,
+          server_name: log.server_name,
+          input: log.input,
+          output: log.output,
+        });
+      }
+    }
+
+    // From telemetry: add retention, context, status events
+    if (telemetry) {
+      for (const turn of telemetry.turns) {
+        if (turn.message_retention) {
+          entries.push({ type: 'retention', input: turn.message_retention });
+        }
+        entries.push({ type: 'context', input: `${turn.context_tokens}/${turn.context_limit}` });
+        if (turn.response_status) {
+          entries.push({ type: 'status', input: turn.response_status });
+        }
+      }
+    }
+
+    return entries;
+  }, [currentStatus, telemetry]);
 
   const createMutation = useMutation({
     mutationFn: createTask,
@@ -172,8 +254,21 @@ export default function Home() {
             <Bot className="w-5 h-5 text-accent" />
             <span className="font-semibold text-text-primary">MiroThinker</span>
           </div>
+          <div className="ml-auto flex items-center gap-3">
+            {username && (
+              <span className="text-sm text-text-secondary">{username}</span>
+            )}
+            <button
+              onClick={logout}
+              className="p-2 hover:bg-surface rounded-lg transition-colors"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4 text-text-secondary" />
+            </button>
+            <ThemeToggle />
+          </div>
           {currentStatus && (
-            <div className="ml-auto flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-3 text-sm">
               {(currentStatus.status === 'running' || currentStatus.status === 'pending') && (
                 <>
                   <span className="text-text-secondary">
@@ -221,17 +316,28 @@ export default function Home() {
               onSelectExample={handleSubmit}
             />
           ) : (
-            <div className="max-w-4xl mx-auto p-4 space-y-6">
+            <div className="max-w-5xl mx-auto p-4 space-y-6">
               {/* User Question */}
               <UserQuestionBubble content={selectedTask.task_description} />
 
+              {/* Task Overview — shown for completed tasks with telemetry */}
+              {isSelectedTaskCompleted && telemetry && (
+                <TaskOverview telemetry={telemetry} />
+              )}
+
               {/* Timeline of agent activity */}
-              <Timeline
+              <TurnTimeline
                 status={currentStatus?.status || 'pending'}
                 messages={messages}
-                logs={'recent_logs' in (currentStatus || {}) ? (currentStatus as TaskStatusUpdate)?.recent_logs || [] : []}
+                turns={turnData}
                 stepCount={currentStatus?.step_count || 0}
+                liveToolCalls={sseToolCalls}
               />
+
+              {/* Activity Log */}
+              {logEntries.length > 0 && (
+                <ActivityLog logs={logEntries} />
+              )}
 
               {/* Completed state */}
               {currentStatus?.status === 'completed' && (
@@ -310,7 +416,6 @@ function CompletedSection({ finalAnswer, summary }: { finalAnswer: string | null
 
   if (!finalAnswer && !summary) return null;
 
-  // Simple markdown rendering for the answer
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Success header */}
@@ -345,46 +450,3 @@ function CompletedSection({ finalAnswer, summary }: { finalAnswer: string | null
   );
 }
 
-// Simple markdown to HTML converter for rendering
-function simpleMarkdownToHtml(text: string): string {
-  return text
-    // Headers
-    .replace(/^### (.+)$/gm, '<h3 class="text-lg font-bold mb-2 mt-4 text-text-primary">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold mb-3 mt-4 text-text-primary">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold mb-4 mt-4 text-text-primary">$1</h1>')
-    // Bold and italic
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-text-primary">$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Code blocks
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-background p-3 rounded-lg mb-3 overflow-x-auto border border-border"><code class="text-text-secondary text-sm">$2</code></pre>')
-    // Inline code
-    .replace(/`(.+?)`/g, '<code class="bg-background px-1.5 py-0.5 rounded text-sm text-accent">$1</code>')
-    // Links
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">$1</a>')
-    // Tables (basic)
-    .replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, (_match, header, body) => {
-      const headers = header.split('|').map((h: string) => h.trim()).filter(Boolean);
-      const rows = body.trim().split('\n').map((row: string) =>
-        row.split('|').map((c: string) => c.trim()).filter(Boolean)
-      );
-      let table = '<table class="w-full border-collapse mb-4"><thead><tr>';
-      headers.forEach((h: string) => { table += `<th class="bg-surface border border-border px-3 py-2 text-left text-text-primary">${h}</th>`; });
-      table += '</tr></thead><tbody>';
-      rows.forEach((row: string[]) => {
-        table += '<tr>';
-        row.forEach((cell) => { table += `<td class="border border-border px-3 py-2 text-text-secondary">${cell}</td>`; });
-        table += '</tr>';
-      });
-      table += '</tbody></table>';
-      return table;
-    })
-    // Horizontal rule
-    .replace(/^---$/gm, '<hr class="border-border my-4" />')
-    // Paragraphs
-    .replace(/\n\n/g, '</p><p class="mb-3 text-text-secondary">')
-    // Line breaks
-    .replace(/\n/g, '<br />')
-    // Wrap in paragraph if not already wrapped
-    .replace(/^(?!<[a-z])/, '<p class="mb-3 text-text-secondary">')
-    .replace(/(?<![>])$/, '</p>');
-}

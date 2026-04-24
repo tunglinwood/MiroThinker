@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Dark mode first palette - inspired by dr.miromind.ai */
+  /* Dark mode palette - inspired by dr.miromind.ai */
   --color-background: #0f1117;
   --color-background-secondary: #161822;
   --color-surface: #1a1d2e;
@@ -61,6 +61,40 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--color-background);
   color: var(--color-text-primary);
+}
+
+/* Light mode overrides */
+.light {
+  --color-background: #f8f9fc;
+  --color-background-secondary: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f1f3f9;
+  --color-border: #e2e5f0;
+  --color-border-hover: #c8cce0;
+
+  --color-text-primary: #1a1d2e;
+  --color-text-secondary: #4a5068;
+  --color-text-muted: #8b90a5;
+
+  --color-accent: #4f46e5;
+  --color-accent-hover: #6366f1;
+  --color-accent-muted: rgba(79, 70, 229, 0.1);
+
+  /* Tool type colors — slightly deeper for light bg */
+  --color-search: #2563eb;
+  --color-search-bg: rgba(37, 99, 235, 0.08);
+  --color-code: #7c3aed;
+  --color-code-bg: rgba(124, 58, 237, 0.08);
+  --color-read: #16a34a;
+  --color-read-bg: rgba(22, 163, 74, 0.08);
+  --color-reasoning: #d97706;
+  --color-reasoning-bg: rgba(217, 119, 6, 0.08);
+
+  /* Status colors */
+  --color-success: #16a34a;
+  --color-error: #dc2626;
+  --color-warning: #d97706;
+  --color-info: #2563eb;
 }
 
 /* Scrollbar */

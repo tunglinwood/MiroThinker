@@ -31,20 +31,20 @@ mcp = FastMCP("searxng-mcp-server")
         (requests.ConnectionError, requests.Timeout, requests.HTTPError)
     ),
 )
-def make_searxng_request(query: str, num_results: int = 10) -> requests.Response:
+def make_searxng_request(query: str, num_results: int = 15) -> requests.Response:
     """Make HTTP request to SearXNG API."""
     # SearXNG API endpoint
     url = f"{SEARXNG_BASE_URL}/search"
-    
+
     params = {
         "q": query,
         "format": "json",
-        "engines": "google,duckduckgo,bing,wikipedia",
+        "engines": "bing",
         "language": "en",
         "num_results": num_results,
     }
-    
-    response = requests.get(url, params=params, timeout=30)
+
+    response = requests.get(url, params=params, timeout=60)
     response.raise_for_status()
     return response
 
@@ -52,21 +52,24 @@ def make_searxng_request(query: str, num_results: int = 10) -> requests.Response
 @mcp.tool()
 def searxng_search(
     q: str,
-    num: int = 10,
+    num: int = 15,
     language: str = "en",
-    engines: str = "google,duckduckgo,bing,wikipedia",
+    category: str = "general",
 ) -> str:
     """
     Tool to perform web searches via SearXNG and retrieve rich results.
-    
-    SearXNG is a privacy-respecting, open metasearch engine that aggregates 
+
+    SearXNG is a privacy-respecting, open metasearch engine that aggregates
     results from multiple search engines.
+
+    For clinical trials, academic papers, or scientific queries, use
+    category="science" to search PubMed, Google Scholar, Semantic Scholar, etc.
 
     Args:
         q: Search query string (required)
-        num: Number of results to return (default: 10)
+        num: Number of results to return (default: 15)
         language: Language code for search results (default: 'en')
-        engines: Comma-separated list of search engines to use (default: 'google,duckduckgo,bing,wikipedia')
+        category: Search category - 'general' or 'science' (default: 'general')
 
     Returns:
         Dictionary containing search results and metadata.
@@ -85,6 +88,14 @@ def searxng_search(
     try:
         # Make the API request
         url = f"{SEARXNG_BASE_URL}/search"
+
+        # Choose engines based on category — Bing is the most reliable engine
+        # Brave is often rate-limited, DuckDuckGo frequently times out
+        if category == "science":
+            engines = "pubmed,google scholar,semantic scholar,crossref,arxiv"
+        else:
+            engines = "bing"
+
         params = {
             "q": q.strip(),
             "format": "json",
@@ -92,12 +103,12 @@ def searxng_search(
             "engines": engines,
             "num_results": num,
         }
-        
-        response = requests.get(url, params=params, timeout=30)
+
+        response = requests.get(url, params=params, timeout=60)
         response.raise_for_status()
-        
+
         data = response.json()
-        
+
         # Format results similar to Serper for compatibility
         results = []
         if "results" in data:
@@ -108,15 +119,17 @@ def searxng_search(
                     "snippet": item.get("content", ""),
                     "source": item.get("engine", ""),
                 })
-        
+
         response_data = {
             "success": True,
             "query": q,
+            "category": category,
+            "engines": engines,
             "results": results,
             "number_of_results": len(results),
             "source": "searxng",
         }
-        
+
         return json.dumps(response_data, ensure_ascii=False)
 
     except requests.ConnectionError as e:

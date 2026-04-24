@@ -84,15 +84,23 @@ export function Sidebar({
               </div>
             </div>
             {/* Delete button on hover */}
-            <button
-              onClick={(e) => {
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteTask(task.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
                 e.stopPropagation();
                 onDeleteTask(task.id);
-              }}
-              className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-error/20 text-error transition-all"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+              }
+            }}
+            className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-error/20 text-error transition-all cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </div>
           </button>
         ))}
       </div>

@@ -13,7 +13,10 @@ from api.models.task import TaskResponse, TaskStatus
 
 
 class TaskManager:
-    """Manages task state with in-memory cache and file persistence."""
+    """Manages task state with in-memory cache and file persistence.
+
+    Tasks are scoped by user_id so each user sees only their own tasks.
+    """
 
     def __init__(self, log_dir: str = "logs/debug"):
         self._tasks: Dict[str, TaskResponse] = {}
@@ -28,6 +31,7 @@ class TaskManager:
         agent_config: str,
         llm_config: str,
         file_path: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> TaskResponse:
         """Create a new task and register it."""
         now = datetime.now()
@@ -51,20 +55,34 @@ class TaskManager:
 
         with self._lock:
             self._tasks[task_id] = task
+            if user_id:
+                # Store user ownership metadata
+                task._user_id = user_id  # type: ignore[attr-defined]
 
         return task
 
-    def get_task(self, task_id: str) -> Optional[TaskResponse]:
-        """Get a task by ID."""
+    def get_task(self, task_id: str, user_id: Optional[str] = None) -> Optional[TaskResponse]:
+        """Get a task by ID. If user_id is provided, verify ownership."""
         with self._lock:
-            return self._tasks.get(task_id)
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+            if user_id is not None:
+                owner = getattr(task, "_user_id", None)
+                if owner is not None and owner != user_id:
+                    return None
+            return task
 
-    def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[TaskResponse]:
-        """Update a task with new data."""
+    def update_task(self, task_id: str, updates: Dict[str, Any], user_id: Optional[str] = None) -> Optional[TaskResponse]:
+        """Update a task with new data. If user_id is provided, verify ownership."""
         with self._lock:
             task = self._tasks.get(task_id)
             if not task:
                 return None
+            if user_id is not None:
+                owner = getattr(task, "_user_id", None)
+                if owner is not None and owner != user_id:
+                    return None
 
             # Update fields
             for key, value in updates.items():
@@ -77,19 +95,27 @@ class TaskManager:
             self._tasks[task_id] = task
             return task
 
-    def set_status(self, task_id: str, status: TaskStatus) -> Optional[TaskResponse]:
+    def set_status(self, task_id: str, status: TaskStatus, user_id: Optional[str] = None) -> Optional[TaskResponse]:
         """Set task status."""
-        return self.update_task(task_id, {"status": status})
+        return self.update_task(task_id, {"status": status}, user_id=user_id)
 
     def list_tasks(
         self,
         page: int = 1,
         page_size: int = 20,
         status_filter: Optional[TaskStatus] = None,
+        user_id: Optional[str] = None,
     ) -> tuple[List[TaskResponse], int]:
-        """List tasks with pagination and optional status filter."""
+        """List tasks with pagination and optional status/user filters."""
         with self._lock:
             tasks = list(self._tasks.values())
+
+            # Filter by user if specified
+            if user_id is not None:
+                tasks = [
+                    t for t in tasks
+                    if getattr(t, "_user_id", None) is None or getattr(t, "_user_id", None) == user_id
+                ]
 
             # Filter by status if specified
             if status_filter:
@@ -108,10 +134,15 @@ class TaskManager:
 
             return tasks, total
 
-    def delete_task(self, task_id: str) -> bool:
-        """Delete a task."""
+    def delete_task(self, task_id: str, user_id: Optional[str] = None) -> bool:
+        """Delete a task. If user_id is provided, verify ownership."""
         with self._lock:
             if task_id in self._tasks:
+                task = self._tasks[task_id]
+                if user_id is not None:
+                    owner = getattr(task, "_user_id", None)
+                    if owner is not None and owner != user_id:
+                        return False
                 del self._tasks[task_id]
                 return True
             return False
@@ -121,14 +152,25 @@ class TaskManager:
         with self._lock:
             return list(self._tasks.keys())
 
-    def find_log_file(self, task_id: str) -> Optional[Path]:
+    def find_log_file(self, task_id: str, user_id: Optional[str] = None) -> Optional[Path]:
         """Find the log file for a task."""
-        # Log files are named like: task_task_example_2026-04-08-14-00-00.json
-        # We need to find the one that contains the task_id
+        # If user_id is provided, look in user-specific directory first
+        if user_id:
+            user_log_dir = self._log_dir / user_id
+            if user_log_dir.exists():
+                for log_file in user_log_dir.glob("task_*.json"):
+                    try:
+                        with open(log_file, "r") as f:
+                            data = json.load(f)
+                            if data.get("task_id") == task_id:
+                                return log_file
+                    except (json.JSONDecodeError, IOError):
+                        continue
+
+        # Fallback: search global log directory
         if not self._log_dir.exists():
             return None
 
-        # Try to find by pattern matching
         for log_file in self._log_dir.glob("task_*.json"):
             try:
                 with open(log_file, "r") as f:
@@ -140,9 +182,9 @@ class TaskManager:
 
         return None
 
-    def read_log_file(self, task_id: str) -> Optional[Dict[str, Any]]:
+    def read_log_file(self, task_id: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Read and parse a task's log file."""
-        log_file = self.find_log_file(task_id)
+        log_file = self.find_log_file(task_id, user_id=user_id)
         if not log_file:
             return None
 
@@ -152,9 +194,9 @@ class TaskManager:
         except (json.JSONDecodeError, IOError):
             return None
 
-    def get_progress_from_log(self, task_id: str) -> Dict[str, Any]:
+    def get_progress_from_log(self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Extract progress information from log file."""
-        log_data = self.read_log_file(task_id)
+        log_data = self.read_log_file(task_id, user_id=user_id)
         if not log_data:
             return {
                 "current_turn": 0,
@@ -196,9 +238,9 @@ class TaskManager:
             "messages": messages,
         }
 
-    def get_final_result_from_log(self, task_id: str) -> Dict[str, Any]:
+    def get_final_result_from_log(self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Extract final result from log file."""
-        log_data = self.read_log_file(task_id)
+        log_data = self.read_log_file(task_id, user_id=user_id)
         if not log_data:
             return {
                 "final_answer": None,
