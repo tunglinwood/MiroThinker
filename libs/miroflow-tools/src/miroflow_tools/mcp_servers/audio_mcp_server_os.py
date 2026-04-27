@@ -121,7 +121,7 @@ def _encode_audio_file(audio_path: str) -> tuple[str, str]:
 
 
 @mcp.tool()
-async def audio_transcription(audio_path_or_url: str) -> str:
+async def audio_transcription(audio_path_or_url: str, **kwargs) -> str:
     """
     Transcribe audio file to text and return the transcription.
     Args:
