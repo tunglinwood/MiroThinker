@@ -48,6 +48,7 @@ export interface SseToolCall {
   input: Record<string, unknown> | null;   // query args from request event
   result: string | null;                    // result JSON string from response event
   status: 'pending' | 'running' | 'completed' | 'error';
+  duration_ms?: number;                     // execution time in milliseconds
 }
 
 export interface LogEntry {

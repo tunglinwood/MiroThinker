@@ -77,7 +77,7 @@ export default function Home() {
   );
 
   // SSE for real-time streaming
-  const { data: sseData, connected: sseConnected, toolCalls: sseToolCalls, subAgents } = useSSE({
+  const { data: sseData, connected: sseConnected, toolCalls: sseToolCalls, subAgents, turns: sseTurns } = useSSE({
     taskId: isActive(selectedTask) ? selectedTask!.id : null,
     enabled: isActive(selectedTask),
     onComplete: handleSSEComplete,
@@ -132,8 +132,22 @@ export default function Home() {
     ? accumulatedMessages
     : completedStatus?.messages || accumulatedMessages || [];
 
-  // Build turn data from telemetry — distribute messages from status across turns
+  // Build turn data — prefer SSE-derived turns during execution, telemetry for completed tasks
   const turnData = useMemo(() => {
+    // During execution, use SSE-derived turns directly
+    if (sseTurns && sseTurns.length > 0 && isActive(selectedTask)) {
+      return sseTurns.map((turn) => ({
+        turn: turn.turn,
+        messages: [] as Message[],
+        toolCalls: turn.tool_calls,
+        input_tokens: turn.input_tokens,
+        output_tokens: turn.output_tokens,
+        context_tokens: turn.context_tokens,
+        context_limit: turn.context_limit,
+      }));
+    }
+
+    // For completed tasks, use telemetry with message distribution
     if (!telemetry) return [];
     const turnCount = telemetry.turns.length;
     const allMessages = (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined) || messages;
@@ -170,7 +184,7 @@ export default function Home() {
     }
 
     return turnsWithMessages;
-  }, [telemetry, (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined), messages]);
+  }, [sseTurns, telemetry, isActive(selectedTask), (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined), messages]);
 
   // Build log entries from recent_logs (backend format: step_name, message, info_level)
   const logEntries = useMemo((): LogEntry[] => {

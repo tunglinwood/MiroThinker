@@ -196,6 +196,7 @@ class StreamHandler:
         payload: dict,
         streaming: bool = False,
         tool_call_id: str = None,
+        duration_ms: int | None = None,
     ) -> str:
         """
         Send tool_call event.
@@ -205,9 +206,7 @@ class StreamHandler:
             payload: Tool call arguments or results
             streaming: If True, send payload keys as deltas
             tool_call_id: Optional existing tool call ID
-
-        Returns:
-            The tool call ID (generated if not provided)
+            duration_ms: Optional execution time in milliseconds (for result events)
         """
         if not tool_call_id:
             tool_call_id = str(uuid.uuid4())
@@ -223,15 +222,14 @@ class StreamHandler:
                     },
                 )
         else:
-            # Send complete tool call
-            await self.update(
-                "tool_call",
-                {
-                    "tool_call_id": tool_call_id,
-                    "tool_name": tool_name,
-                    "tool_input": payload,
-                },
-            )
+            data = {
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_name,
+                "tool_input": payload,
+            }
+            if duration_ms is not None:
+                data["duration_ms"] = duration_ms
+            await self.update("tool_call", data)
 
         return tool_call_id
 
@@ -276,5 +274,46 @@ class StreamHandler:
                 "sub_agent_name": sub_agent_name,
                 "sub_agent_id": sub_agent_id,
                 "result": result[:2000] if result else "",
+            },
+        )
+
+    async def end_of_turn(
+        self,
+        turn: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        context_tokens: int = 0,
+        context_limit: int = 0,
+        message_retention: str = "",
+        response_status: str = "",
+        duration_ms: int = 0,
+    ):
+        """
+        Send end_of_turn event with per-turn telemetry.
+
+        This allows the UI to build structured turn data from SSE alone,
+        without needing a separate telemetry endpoint.
+
+        Args:
+            turn: Turn number
+            input_tokens: Prompt tokens consumed
+            output_tokens: Completion tokens produced
+            context_tokens: Current context window usage
+            context_limit: Maximum context window size
+            message_retention: Retention policy summary (e.g. "Keeping 5 most recent")
+            response_status: LLM response status (e.g. "LLM returned tool calls")
+            duration_ms: Total turn duration in milliseconds
+        """
+        await self.update(
+            "end_of_turn",
+            {
+                "turn": turn,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "context_tokens": context_tokens,
+                "context_limit": context_limit,
+                "message_retention": message_retention,
+                "response_status": response_status,
+                "duration_ms": duration_ms,
             },
         )

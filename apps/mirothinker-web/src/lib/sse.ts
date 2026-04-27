@@ -2,7 +2,7 @@
 // Connects to the MiroThinker SSE endpoint and accumulates events
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { TaskStatus, TaskStatusUpdate, Message, LogEntry, SseToolCall, SubAgentState } from './types';
+import type { TaskStatus, TaskStatusUpdate, Message, LogEntry, SseToolCall, SubAgentState, TurnTelemetry } from './types';
 import { getApiBaseUrl } from './api';
 
 interface UseSSEOptions {
@@ -26,6 +26,8 @@ interface SSEState {
   error: string | null;
   // Sub-agent state (array for parallel dispatch)
   subAgents: SubAgentState[];
+  // Accumulated per-turn telemetry from end_of_turn SSE events
+  turns: TurnTelemetry[];
 }
 
 const initialState: SSEState = {
@@ -41,6 +43,7 @@ const initialState: SSEState = {
   connected: false,
   error: null,
   subAgents: [],
+  turns: [],
 };
 
 export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: UseSSEOptions) {
@@ -50,6 +53,7 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
   const logAccumRef = useRef<LogEntry[]>([]);
   const turnCountRef = useRef(0);
   const stepCountRef = useRef(0);
+  const turnsRef = useRef<TurnTelemetry[]>([]);
   const activeTaskIdRef = useRef<string | null>(null);
   // Sub-agent refs (Map-based for parallel dispatch)
   const subAgentMessageAccumRef = useRef<Map<string, Map<string, string>>>(new Map()); // sub_agent_id -> (msg_id -> content)
@@ -80,6 +84,7 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
       logAccumRef.current = [];
       turnCountRef.current = 0;
       stepCountRef.current = 0;
+      turnsRef.current = [];
       subAgentMessageAccumRef.current = new Map();
       subAgentToolCallsRef.current = new Map();
       subAgentActiveIdsRef.current = new Set();
@@ -296,6 +301,10 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
               tc.status = 'completed';
             }
 
+            if (data.duration_ms !== undefined) {
+              tc.duration_ms = data.duration_ms as number;
+            }
+
             const allToolCalls = Array.from(tcMap.values());
 
             setState((prev) => {
@@ -357,6 +366,11 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
               tc.status = 'completed';
             }
 
+            // Capture duration_ms from backend event
+            if (data.duration_ms !== undefined) {
+              tc.duration_ms = data.duration_ms as number;
+            }
+
             const logEntry: LogEntry = {
               type: 'tool_call',
               tool_name: data.tool_name as string,
@@ -384,7 +398,6 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
             }));
           }
           break;
-          break;
         }
 
         case 'end_of_llm':
@@ -394,6 +407,49 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
         case 'end_of_agent':
           onStatusChangeRef.current?.('running');
           break;
+
+        case 'end_of_turn': {
+          // Per-turn telemetry from backend — build structured turn data
+          const turnData: TurnTelemetry = {
+            turn: (data.turn as number) || 0,
+            input_tokens: (data.input_tokens as number) || 0,
+            output_tokens: (data.output_tokens as number) || 0,
+            context_tokens: (data.context_tokens as number) || 0,
+            context_limit: (data.context_limit as number) || 131072,
+            tool_calls: [],
+            message_retention: (data.message_retention as string) || '',
+            response_status: (data.response_status as string) || '',
+            duration_ms: (data.duration_ms as number) || 0,
+          };
+
+          // Collect tool calls for this turn from toolCallsRef
+          const toolsForTurn = Array.from(toolCallsRef.current.values()).filter(
+            (tc) => tc.turn === turnData.turn
+          );
+          turnData.tool_calls = toolsForTurn.map((tc) => ({
+            tool_name: tc.tool_name,
+            server_name: tc.server_name,
+            arguments: tc.input || {},
+            duration_ms: tc.duration_ms ?? 0,
+            success: tc.status === 'completed',
+            result_preview: tc.result || '',
+          }));
+
+          // Update or append
+          const existingIdx = turnsRef.current.findIndex((t) => t.turn === turnData.turn);
+          if (existingIdx >= 0) {
+            // Merge tool_calls: SSE tool calls take priority
+            turnsRef.current[existingIdx] = { ...turnsRef.current[existingIdx], ...turnData };
+          } else {
+            turnsRef.current.push(turnData);
+          }
+
+          setState((prev) => ({
+            ...prev,
+            turns: [...turnsRef.current],
+          }));
+          break;
+        }
 
         case 'end_of_workflow':
           setState((prev) => ({ ...prev, status: 'completed' }));
@@ -488,5 +544,6 @@ export function useSSE({ taskId, enabled = true, onStatusChange, onComplete }: U
     connected: state.connected,
     error: state.error,
     subAgents: state.subAgents,
+    turns: state.turns,
   };
 }

@@ -1021,6 +1021,7 @@ class Orchestrator:
 
                 tool_call_id = await self.stream.tool_call(tool_name, arguments)
 
+                call_start_time = time.time()
                 tool_result = (
                     await self.main_agent_tool_manager.execute_tool_call(
                         server_name=server_name,
@@ -1028,6 +1029,7 @@ class Orchestrator:
                         arguments=arguments,
                     )
                 )
+                call_duration_ms = int((time.time() - call_start_time) * 1000)
 
                 if "error" not in tool_result:
                     await self._record_query(cache_name, tool_name, arguments)
@@ -1060,7 +1062,7 @@ class Orchestrator:
                         break
 
                 await self.stream.tool_call(
-                    tool_name, {"result": result}, tool_call_id=tool_call_id
+                    tool_name, {"result": result}, tool_call_id=tool_call_id, duration_ms=call_duration_ms
                 )
 
                 regular_results.append({"result": tool_result, "call": call, "tool_call_id": tool_call_id})
@@ -1169,6 +1171,19 @@ class Orchestrator:
                     "Context limit reached, triggering summary",
                 )
                 break
+
+            # Emit per-turn telemetry for SSE — allows UI to build structured turns
+            ctx_tokens = main_agent_last_call_tokens.get("prompt_tokens", 0) + main_agent_last_call_tokens.get("completion_tokens", 0)
+            ctx_limit = self.llm_client.max_context_length
+            await self.stream.end_of_turn(
+                turn=turn_count,
+                input_tokens=main_agent_last_call_tokens.get("prompt_tokens", 0),
+                output_tokens=main_agent_last_call_tokens.get("completion_tokens", 0),
+                context_tokens=ctx_tokens,
+                context_limit=ctx_limit,
+                message_retention=f"Keeping {len(message_history)} messages",
+                response_status="LLM returned tool calls",
+            )
 
         await self.stream.end_llm("main")
         await self.stream.end_agent("main", self.current_agent_id)
