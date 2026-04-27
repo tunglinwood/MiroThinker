@@ -941,33 +941,41 @@ class Orchestrator:
 
                 async def run_sub(call):
                     cache_name = "main_" + call["tool_name"]
-                    (
-                        is_dup,
-                        should_rb,
-                        new_turn,
-                        new_rb,
-                        new_hist,
-                    ) = await self._check_duplicate_query(
-                        call["tool_name"],
-                        call["arguments"],
-                        cache_name,
-                        consecutive_rollbacks,
-                        turn_count,
-                        total_attempts,
-                        max_attempts,
-                        message_history,
-                        "Main Agent",
-                    )
-                    if should_rb:
-                        return {"error": "rollback_needed", "call": call}
+                    try:
+                        (
+                            is_dup,
+                            should_rb,
+                            new_turn,
+                            new_rb,
+                            new_hist,
+                        ) = await self._check_duplicate_query(
+                            call["tool_name"],
+                            call["arguments"],
+                            cache_name,
+                            consecutive_rollbacks,
+                            turn_count,
+                            total_attempts,
+                            max_attempts,
+                            message_history,
+                            "Main Agent",
+                        )
+                        if should_rb:
+                            return {"error": "rollback_needed", "call": call}
 
-                    result = await self.run_sub_agent(
-                        call["server_name"],
-                        call["arguments"]["subtask"],
-                    )
+                        result = await self.run_sub_agent(
+                            call["server_name"],
+                            call["arguments"]["subtask"],
+                        )
 
-                    await self._record_query(cache_name, call["tool_name"], call["arguments"])
-                    return {"result": result, "call": call}
+                        await self._record_query(cache_name, call["tool_name"], call["arguments"])
+                        return {"result": result, "call": call}
+                    except Exception as e:
+                        self.task_log.log_step(
+                            "error",
+                            f"Sub-agent {call['server_name']} | Tool Call",
+                            f"Sub-agent failed: {str(e)}",
+                        )
+                        return {"error": str(e), "call": call}
 
                 sub_agent_results = await asyncio.gather(*[run_sub(c) for c in sub_agent_calls])
 
@@ -1073,11 +1081,19 @@ class Orchestrator:
                 if result.get("error") == "rollback_needed":
                     continue
                 call = result["call"]
-                tool_result = {
-                    "server_name": call["server_name"],
-                    "tool_name": call["tool_name"],
-                    "result": result["result"],
-                }
+                if "error" in result and result["error"] != "rollback_needed":
+                    # Sub-agent failed — include error as result for main agent
+                    tool_result = {
+                        "server_name": call["server_name"],
+                        "tool_name": call["tool_name"],
+                        "error": result["error"],
+                    }
+                else:
+                    tool_result = {
+                        "server_name": call["server_name"],
+                        "tool_name": call["tool_name"],
+                        "result": result.get("result"),
+                    }
                 all_results.append((call["id"], tool_result, call["server_name"], call["tool_name"], 0))
 
             for result in regular_results:

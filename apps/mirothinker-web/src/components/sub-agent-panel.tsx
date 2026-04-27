@@ -54,8 +54,8 @@ export function SubAgentPanel({ subAgents }: SubAgentPanelProps) {
     }
   }, [closing, visible]);
 
-  // Hide if no sub-agents
-  if (!visible || subAgents.length === 0) return null;
+  // Hide entirely if no sub-agents
+  if (subAgents.length === 0) return null;
 
   const handleClose = () => {
     if (autoCloseTimer.current) clearTimeout(autoCloseTimer.current);
@@ -65,11 +65,11 @@ export function SubAgentPanel({ subAgents }: SubAgentPanelProps) {
   const runningCount = subAgents.filter((sa) => sa.status === 'running').length;
   const completedCount = subAgents.filter((sa) => sa.status === 'completed').length;
 
-  // Collapsed badge — shows when panel is retracted
-  if (collapsed) {
+  // Collapsed badge — always shows, whether explicitly collapsed or after auto-close
+  if (collapsed || !visible) {
     return (
       <button
-        onClick={() => { setCollapsed(false); setClosing(false); }}
+        onClick={() => { setCollapsed(false); setVisible(true); setClosing(false); }}
         className="fixed right-3 top-20 z-40 flex items-center gap-2 px-3 py-2 rounded-full bg-accent/10 border border-accent/20 backdrop-blur-sm hover:bg-accent/20 transition-colors shadow-lg"
         title="Open sub-agents panel"
       >
