@@ -13,6 +13,68 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Extract content between balanced braces starting after an opening brace.
+ * Returns [content, endIndex] where endIndex is the position of the matching close brace,
+ * or null if braces are unbalanced.
+ */
+function extractBalancedBraces(text: string, startIndex: number): [string, number] | null {
+  let depth = 0;
+  let i = startIndex;
+  while (i < text.length) {
+    if (text[i] === '{') {
+      depth++;
+    } else if (text[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        // Return content without the outer braces
+        return [text.slice(startIndex + 1, i), i];
+      }
+    }
+    // Handle escape sequences like \%, \$, \\
+    if (text[i] === '\\') {
+      i++; // skip the escaped character
+    }
+    i++;
+  }
+  return null;
+}
+
+/**
+ * Find and render standalone \boxed{...} patterns in text.
+ * Handles nested braces properly.
+ */
+function renderBoxedMath(text: string, displayMode: boolean): string {
+  const result: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const boxedIndex = text.indexOf('\\boxed', i);
+    if (boxedIndex === -1) {
+      result.push(text.slice(i));
+      break;
+    }
+    // Append text before the \boxed
+    result.push(text.slice(i, boxedIndex));
+    // Extract content between braces
+    const braceStart = boxedIndex + 6; // position after '\boxed'
+    const extracted = extractBalancedBraces(text, braceStart);
+    if (extracted) {
+      const [content, endIndex] = extracted;
+      try {
+        result.push(katex.renderToString(content, { displayMode, throwOnError: false }));
+      } catch {
+        result.push(`<code class="bg-background px-1.5 py-0.5 rounded text-sm text-accent">${escapeHtml('\\boxed{' + content + '}')}</code>`);
+      }
+      i = endIndex + 1;
+    } else {
+      // Unbalanced braces — treat as literal text
+      result.push('\\boxed');
+      i = boxedIndex + 6;
+    }
+  }
+  return result.join('');
+}
+
 function renderDisplayMath(math: string): string {
   try {
     return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
@@ -71,6 +133,9 @@ function processInline(text: string): string {
   inlineMath.forEach((math, i) => {
     text = text.replace(`\x00MATH_${i}\x00`, renderInlineMath(math));
   });
+
+  // Handle standalone \boxed{...} without $ delimiters
+  text = renderBoxedMath(text, false);
 
   return text;
 }
@@ -215,6 +280,46 @@ export function simpleMarkdownToHtml(text: string): string {
 
     if (inDisplayMath) {
       displayMathContent += line + '\n';
+      continue;
+    }
+
+    // Standalone \boxed{...} block (may span multiple lines with balanced braces)
+    const boxedMatch = line.match(/^\s*\\boxed\{/);
+    if (boxedMatch) {
+      flushParagraph();
+      flushListAndTable();
+      // Collect lines until braces are balanced
+      const braceStart = line.indexOf('{', line.indexOf('\\boxed'));
+      let combined = line;
+      let foundEnd = false;
+
+      const checkExtracted = extractBalancedBraces(combined, braceStart);
+      if (checkExtracted) {
+        // Single-line \boxed{...}
+        const content = combined.slice(braceStart + 1, -1);
+        const rendered = katex.renderToString(content, { displayMode: true, throwOnError: false });
+        blocks.push(`<div class="my-4 p-4 border-2 border-accent/40 rounded-lg bg-background overflow-x-auto">${rendered}</div>`);
+        foundEnd = true;
+      } else {
+        // Multi-line boxed content — scan forward
+        for (let j = i + 1; j < lines.length; j++) {
+          combined = combined + '\n' + lines[j];
+          const extracted = extractBalancedBraces(combined, braceStart);
+          if (extracted && extracted[1] === combined.length - 1) {
+            const content = combined.slice(braceStart + 1, -1);
+            const rendered = katex.renderToString(content, { displayMode: true, throwOnError: false });
+            blocks.push(`<div class="my-4 p-4 border-2 border-accent/40 rounded-lg bg-background overflow-x-auto">${rendered}</div>`);
+            i = j;
+            foundEnd = true;
+            break;
+          }
+        }
+      }
+
+      if (!foundEnd) {
+        // Fallback: render as code block
+        blocks.push(`<pre class="bg-background p-4 rounded-lg mb-3 overflow-x-auto border border-border text-text-secondary font-mono text-sm">${escapeHtml(line)}</pre>`);
+      }
       continue;
     }
 

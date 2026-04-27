@@ -39,7 +39,7 @@ def make_searxng_request(query: str, num_results: int = 20) -> requests.Response
     params = {
         "q": query,
         "format": "json",
-        "engines": "startpage",
+        "engines": "duckduckgo",
         "language": "en",
         "num_results": num_results,
     }
@@ -90,14 +90,13 @@ def searxng_search(
         url = f"{SEARXNG_BASE_URL}/search"
 
         # Choose engines based on category
-        # Startpage (Google proxy) provides far better quality for brand-name queries.
-        # Bing matches "Intel" to driver downloads and marketing pages instead of
-        # financial analysis. Yacy results are low-relevance, Brave is rate-limited,
-        # DDG is CAPTCHA-blocked.
+        # DuckDuckGo is primary general search — consistently returns relevant, current results.
+        # Startpage blocked by CAPTCHA; Brave rate-limited; Qwant suspended.
+        # Bing excluded — low relevance for brand-name and company queries.
         if category == "science":
             engines = "pubmed,google scholar,semantic scholar,crossref,arxiv"
         else:
-            engines = "startpage"
+            engines = "duckduckgo"
 
         params = {
             "q": q.strip(),
