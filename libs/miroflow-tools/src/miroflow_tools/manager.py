@@ -9,8 +9,6 @@ from mcp import ClientSession, StdioServerParameters  # (already imported in con
 from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 
-from .mcp_servers.browser_session import PlaywrightSession
-
 # logger = logging.getLogger("miroflow_agent")
 
 R = TypeVar("R")
@@ -55,7 +53,6 @@ class ToolManager(ToolManagerProtocol):
         self.server_dict = {
             config["name"]: config["params"] for config in server_configs
         }
-        self.browser_session = None
         self.tool_blacklist = tool_blacklist if tool_blacklist else set()
         self.task_log = None
 
@@ -225,157 +222,137 @@ class ToolManager(ToolManagerProtocol):
             metadata={"arguments": arguments},
         )
 
-        if server_name == "playwright":
-            try:
-                if self.browser_session is None:
-                    self.browser_session = PlaywrightSession(server_params)
-                    await self.browser_session.connect()
-                tool_result = await self.browser_session.call_tool(
-                    tool_name, arguments=arguments
+        try:
+            result_content = None
+            if isinstance(server_params, StdioServerParameters):
+                async with stdio_client(server_params) as (read, write):
+                    async with ClientSession(
+                        read, write, sampling_callback=None
+                    ) as session:
+                        await session.initialize()
+                        try:
+                            tool_result = await session.call_tool(
+                                tool_name, arguments=arguments
+                            )
+                            result_content = (
+                                tool_result.content[-1].text
+                                if tool_result.content
+                                else ""
+                            )
+                            # post hoc check for browsing agent reading answers from hf datsets
+                            if self._should_block_hf_scraping(tool_name, arguments):
+                                result_content = "You are trying to scrape a Hugging Face dataset for answers, please do not use the scrape tool for this purpose."
+                        except Exception as tool_error:
+                            self._log(
+                                "error",
+                                "ToolManager | Tool Execution Error",
+                                f"Tool execution error: {tool_error}",
+                            )
+                            return {
+                                "server_name": server_name,
+                                "tool_name": tool_name,
+                                "error": f"Tool execution failed: {str(tool_error)}",
+                            }
+            elif isinstance(server_params, str) and server_params.startswith(
+                ("http://", "https://")
+            ):
+                async with sse_client(server_params) as (read, write):
+                    async with ClientSession(
+                        read, write, sampling_callback=None
+                    ) as session:
+                        await session.initialize()
+                        try:
+                            tool_result = await session.call_tool(
+                                tool_name, arguments=arguments
+                            )
+                            result_content = (
+                                tool_result.content[-1].text
+                                if tool_result.content
+                                else ""
+                            )
+                            # post hoc check for browsing agent reading answers from hf datsets
+                            if self._should_block_hf_scraping(tool_name, arguments):
+                                result_content = "You are trying to scrape a Hugging Face dataset for answers, please do not use the scrape tool for this purpose."
+                        except Exception as tool_error:
+                            self._log(
+                                "error",
+                                "ToolManager | Tool Execution Error",
+                                f"Tool execution error: {tool_error}",
+                            )
+                            return {
+                                "server_name": server_name,
+                                "tool_name": tool_name,
+                                "error": f"Tool execution failed: {str(tool_error)}",
+                            }
+            else:
+                raise TypeError(
+                    f"Unknown server params type for {server_name}: {type(server_params)}"
                 )
-                return {
-                    "server_name": server_name,
-                    "tool_name": tool_name,
-                    "result": tool_result,
-                }
-            except Exception as e:
-                return {
-                    "server_name": server_name,
-                    "tool_name": tool_name,
-                    "error": f"Tool call failed: {str(e)}",
-                }
-        else:
-            try:
-                result_content = None
-                if isinstance(server_params, StdioServerParameters):
-                    async with stdio_client(server_params) as (read, write):
-                        async with ClientSession(
-                            read, write, sampling_callback=None
-                        ) as session:
-                            await session.initialize()
-                            try:
-                                tool_result = await session.call_tool(
-                                    tool_name, arguments=arguments
-                                )
-                                result_content = (
-                                    tool_result.content[-1].text
-                                    if tool_result.content
-                                    else ""
-                                )
-                                # post hoc check for browsing agent reading answers from hf datsets
-                                if self._should_block_hf_scraping(tool_name, arguments):
-                                    result_content = "You are trying to scrape a Hugging Face dataset for answers, please do not use the scrape tool for this purpose."
-                            except Exception as tool_error:
-                                self._log(
-                                    "error",
-                                    "ToolManager | Tool Execution Error",
-                                    f"Tool execution error: {tool_error}",
-                                )
-                                return {
-                                    "server_name": server_name,
-                                    "tool_name": tool_name,
-                                    "error": f"Tool execution failed: {str(tool_error)}",
-                                }
-                elif isinstance(server_params, str) and server_params.startswith(
-                    ("http://", "https://")
-                ):
-                    async with sse_client(server_params) as (read, write):
-                        async with ClientSession(
-                            read, write, sampling_callback=None
-                        ) as session:
-                            await session.initialize()
-                            try:
-                                tool_result = await session.call_tool(
-                                    tool_name, arguments=arguments
-                                )
-                                result_content = (
-                                    tool_result.content[-1].text
-                                    if tool_result.content
-                                    else ""
-                                )
-                                # post hoc check for browsing agent reading answers from hf datsets
-                                if self._should_block_hf_scraping(tool_name, arguments):
-                                    result_content = "You are trying to scrape a Hugging Face dataset for answers, please do not use the scrape tool for this purpose."
-                            except Exception as tool_error:
-                                self._log(
-                                    "error",
-                                    "ToolManager | Tool Execution Error",
-                                    f"Tool execution error: {tool_error}",
-                                )
-                                return {
-                                    "server_name": server_name,
-                                    "tool_name": tool_name,
-                                    "error": f"Tool execution failed: {str(tool_error)}",
-                                }
-                else:
-                    raise TypeError(
-                        f"Unknown server params type for {server_name}: {type(server_params)}"
+
+            self._log(
+                "info",
+                "ToolManager | Tool Call Success",
+                f"Tool '{tool_name}' (server: '{server_name}') called successfully.",
+            )
+
+            return {
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "result": result_content,  # Return extracted text content
+            }
+
+        except Exception as outer_e:  # Rename this to outer_e to avoid shadowing
+            self._log(
+                "error",
+                "ToolManager | Tool Call Failed",
+                f"Error: Failed to call tool '{tool_name}' (server: '{server_name}'): {outer_e}",
+            )
+
+            # Store the original error message for later use
+            error_message = str(outer_e)
+
+            if (
+                tool_name in ["scrape", "scrape_website"]
+                and "unhandled errors" in error_message
+                and "url" in arguments
+                and arguments["url"] is not None
+            ):
+                try:
+                    self._log(
+                        "info",
+                        "ToolManager | Fallback Attempt",
+                        "Attempting fallback using MarkItDown...",
                     )
+                    from markitdown import MarkItDown
 
-                self._log(
-                    "info",
-                    "ToolManager | Tool Call Success",
-                    f"Tool '{tool_name}' (server: '{server_name}') called successfully.",
-                )
+                    md = MarkItDown(
+                        docintel_endpoint="<document_intelligence_endpoint>"
+                    )
+                    result = md.convert(arguments["url"])
+                    self._log(
+                        "info",
+                        "ToolManager | Fallback Success",
+                        "MarkItDown fallback successful",
+                    )
+                    return {
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "result": result.text_content,  # Return extracted text content
+                    }
+                except (
+                    Exception
+                ) as inner_e:  # Use a different name to avoid shadowing
+                    # Log the inner exception if needed
+                    self._log(
+                        "error",
+                        "ToolManager | Fallback Failed",
+                        f"Fallback also failed: {inner_e}",
+                    )
+                    # No need for pass here as we'll continue to the return statement
 
-                return {
-                    "server_name": server_name,
-                    "tool_name": tool_name,
-                    "result": result_content,  # Return extracted text content
-                }
-
-            except Exception as outer_e:  # Rename this to outer_e to avoid shadowing
-                self._log(
-                    "error",
-                    "ToolManager | Tool Call Failed",
-                    f"Error: Failed to call tool '{tool_name}' (server: '{server_name}'): {outer_e}",
-                )
-
-                # Store the original error message for later use
-                error_message = str(outer_e)
-
-                if (
-                    tool_name in ["scrape", "scrape_website"]
-                    and "unhandled errors" in error_message
-                    and "url" in arguments
-                    and arguments["url"] is not None
-                ):
-                    try:
-                        self._log(
-                            "info",
-                            "ToolManager | Fallback Attempt",
-                            "Attempting fallback using MarkItDown...",
-                        )
-                        from markitdown import MarkItDown
-
-                        md = MarkItDown(
-                            docintel_endpoint="<document_intelligence_endpoint>"
-                        )
-                        result = md.convert(arguments["url"])
-                        self._log(
-                            "info",
-                            "ToolManager | Fallback Success",
-                            "MarkItDown fallback successful",
-                        )
-                        return {
-                            "server_name": server_name,
-                            "tool_name": tool_name,
-                            "result": result.text_content,  # Return extracted text content
-                        }
-                    except (
-                        Exception
-                    ) as inner_e:  # Use a different name to avoid shadowing
-                        # Log the inner exception if needed
-                        self._log(
-                            "error",
-                            "ToolManager | Fallback Failed",
-                            f"Fallback also failed: {inner_e}",
-                        )
-                        # No need for pass here as we'll continue to the return statement
-
-                # Always use the outer exception for the final error response
-                return {
-                    "server_name": server_name,
-                    "tool_name": tool_name,
-                    "error": f"Tool call failed: {error_message}",
-                }
+            # Always use the outer exception for the final error response
+            return {
+                "server_name": server_name,
+                "tool_name": tool_name,
+                "error": f"Tool call failed: {error_message}",
+            }

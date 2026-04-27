@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listTasks, createTask, deleteTask, getTaskStatus, listConfigs, uploadFile, getTaskTelemetry, getStoredUser, logout } from '@/lib/api';
+import Link from 'next/link';
+import { listTasks, createTask, deleteTask, getTaskStatus, listConfigs, uploadFile, getTaskTelemetry, getStoredUser, logout, isAdmin } from '@/lib/api';
 import { useSSE } from '@/lib/sse';
 import { usePolling } from '@/lib/use-polling';
 import { simpleMarkdownToHtml } from '@/lib/markdown';
@@ -14,7 +15,7 @@ import { TaskOverview } from '@/components/task-overview';
 import { ActivityLog } from '@/components/activity-log';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Bot, PanelLeftClose, PanelLeft, Square, LogOut } from 'lucide-react';
+import { Bot, PanelLeftClose, PanelLeft, Square, LogOut, Shield } from 'lucide-react';
 
 export default function Home() {
   const queryClient = useQueryClient();
@@ -24,6 +25,7 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [accumulatedMessages, setAccumulatedMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [username, setUsername] = useState<string | null>(null);
+  const [adminRole, setAdminRole] = useState(false);
 
   // Auth check: redirect if no token
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function Home() {
       return;
     }
     setUsername(user);
+    setAdminRole(isAdmin());
   }, []);
 
   // Fetch configs
@@ -128,34 +131,83 @@ export default function Home() {
     ? accumulatedMessages
     : completedStatus?.messages || accumulatedMessages || [];
 
-  // Build turn data from telemetry
+  // Build turn data from telemetry — distribute messages from status across turns
   const turnData = useMemo(() => {
     if (!telemetry) return [];
-    return telemetry.turns.map((turn) => ({
-      turn: turn.turn,
-      messages: [] as Message[],
-      toolCalls: turn.tool_calls,
-      input_tokens: turn.input_tokens,
-      output_tokens: turn.output_tokens,
-      context_tokens: turn.context_tokens,
-      context_limit: turn.context_limit,
-    }));
-  }, [telemetry]);
+    const turnCount = telemetry.turns.length;
+    const allMessages = (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined) || messages;
 
-  // Build log entries from SSE or telemetry
+    // Distribute messages across turns: messages that arrive between turn boundaries
+    // are grouped into the corresponding turn. Simple strategy: divide non-system
+    // messages evenly across turns, keeping order.
+    const userAndAssistant = allMessages.filter(
+      (m) => m.role === 'user' || m.role === 'assistant'
+    );
+    const systemMsgs = allMessages.filter((m) => m.role === 'system');
+
+    const turnsWithMessages = telemetry.turns.map((turn, idx) => {
+      const msgsPerTurn = Math.floor(userAndAssistant.length / turnCount);
+      const remainder = userAndAssistant.length % turnCount;
+      const start = idx * msgsPerTurn + Math.min(idx, remainder);
+      const end = start + msgsPerTurn + (idx < remainder ? 1 : 0);
+
+      return {
+        turn: turn.turn,
+        messages: userAndAssistant.slice(start, end) as Message[],
+        toolCalls: turn.tool_calls,
+        input_tokens: turn.input_tokens,
+        output_tokens: turn.output_tokens,
+        context_tokens: turn.context_tokens,
+        context_limit: turn.context_limit,
+      };
+    });
+
+    // Attach system messages to the last turn
+    if (systemMsgs.length > 0 && turnsWithMessages.length > 0) {
+      const last = turnsWithMessages[turnsWithMessages.length - 1];
+      last.messages = [...last.messages, ...systemMsgs] as Message[];
+    }
+
+    return turnsWithMessages;
+  }, [telemetry, (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined), messages]);
+
+  // Build log entries from recent_logs (backend format: step_name, message, info_level)
   const logEntries = useMemo((): LogEntry[] => {
     const entries: LogEntry[] = [];
 
-    // From SSE logs
     if (currentStatus && 'recent_logs' in currentStatus) {
       const logs = (currentStatus as TaskStatusUpdate).recent_logs || [];
       for (const log of logs) {
+        const raw = log as unknown as Record<string, unknown>;
+        const stepName = (raw.step_name || '') as string;
+        const msg = (raw.message || '') as string;
+        const infoLevel = (raw.info_level || 'info') as string;
+
+        // Classify based on step_name patterns
+        let type = 'tool_call';
+        if (stepName.includes('Token Usage') || stepName.includes('Usage Calculation')) {
+          type = 'context';
+        } else if (stepName.includes('Response Status')) {
+          type = 'status';
+        } else if (
+          stepName.includes('Final Summary') ||
+          stepName.includes('Final Answer') ||
+          stepName.includes('Final boxed') ||
+          stepName.includes('Message Retention') ||
+          stepName.includes('task_execution_finished') ||
+          stepName.includes('Task Completed')
+        ) {
+          type = 'retention';
+        } else if (stepName.includes('Tool Call') || stepName.includes('MCP')) {
+          type = 'tool_call';
+        }
+
         entries.push({
-          type: log.type || 'tool_call',
-          tool_name: log.tool_name,
-          server_name: log.server_name,
-          input: log.input,
-          output: log.output,
+          type,
+          tool_name: (raw.tool_name as string) || undefined,
+          server_name: (raw.server_name as string) || undefined,
+          input: stepName ? `${stepName}: ${msg}` : msg,
+          output: undefined,
         });
       }
     }
@@ -257,6 +309,12 @@ export default function Home() {
           <div className="ml-auto flex items-center gap-3">
             {username && (
               <span className="text-sm text-text-secondary">{username}</span>
+            )}
+            {adminRole && (
+              <Link href="/admin" className="flex items-center gap-1.5 px-2.5 py-1.5 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors text-xs font-medium">
+                <Shield className="w-3.5 h-3.5" />
+                Admin
+              </Link>
             )}
             <button
               onClick={logout}

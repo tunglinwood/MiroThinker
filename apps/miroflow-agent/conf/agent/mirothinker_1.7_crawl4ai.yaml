@@ -1,8 +1,7 @@
 # conf/agent/mirothinker_1.7_crawl4ai.yaml
-# MiroThinker 1.7 - Hybrid Setup (E2B for code execution)
-# Tools: SearXNG (search), Crawl4AI (scraping), E2B (code), qwen3.5 (vision/reasoning)
+# MiroThinker 1.7 - Hybrid Setup
+# Tools: SearXNG (search), Crawl4AI (scraping), microsandbox (code), qwen3.5 (vision/reasoning)
 # Requires: docker run -d -p 11235:11235 --name crawl4ai --shm-size=1g unclecode/crawl4ai:latest
-# Code execution: uses E2B (requires API key from https://e2b.dev)
 # For fully local setup without API keys, use mirothinker_1.7_microsandbox instead
 defaults:
   - default
@@ -12,12 +11,11 @@ main_agent:
   tools:
     - tool-searxng-search        # Local SearXNG search (no API key)
     - tool-crawl4ai              # Local Crawl4AI scraping (no API key)
-    - tool-python                # E2B code execution (requires E2B_API_KEY)
+    - microsandbox-docker        # Local Docker code execution (no API key)
     - tool-vqa-os                # Local vision LLM (qwen3.5 at http://localhost:8001/v1)
     - tool-reasoning-os          # Local reasoning model (qwen3.5)
   tool_blacklist:
-    - [ "tool-searxng-search", "sogou_search" ]
-    - [ "tool-python", "download_file_from_sandbox_to_local" ]
+    []
   max_turns: 200
 
 sub_agents:

@@ -138,3 +138,49 @@ class ConfigListResponse(BaseModel):
     # MiroFlow raw config lists (for advanced clients)
     miroflow_agent_configs: list[str] = Field(default_factory=list)
     miroflow_llm_configs: list[str] = Field(default_factory=list)
+
+
+class ServiceStatus(BaseModel):
+    """Status of a single service in admin health check."""
+
+    status: str
+    response_time_ms: Optional[int] = None
+    url: Optional[str] = None
+    details: Optional[str] = None
+
+
+class AdminHealthResponse(BaseModel):
+    """Admin health check with detailed service status."""
+
+    status: str
+    version: str
+    services: dict[str, ServiceStatus]
+    active_tasks: int
+    total_users: int
+    uptime_seconds: float = 0
+
+
+class AdminUser(BaseModel):
+    """User info for admin dashboard."""
+
+    username: str
+    total_tasks: int
+    active_tasks: int
+    completed_tasks: int
+    failed_tasks: int
+    last_active: str
+
+
+class AdminUsersResponse(BaseModel):
+    """Response for admin users list."""
+
+    users: list[AdminUser]
+
+
+class AdminTaskListResponse(BaseModel):
+    """Response for admin tasks list."""
+
+    tasks: list[TaskResponse]
+    total: int
+    page: int
+    page_size: int

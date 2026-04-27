@@ -21,10 +21,6 @@ from omegaconf import DictConfig
 # Load environment variables from .env file
 load_dotenv()
 
-# API for Google Search
-SERPER_API_KEY = os.environ.get("SERPER_API_KEY")
-SERPER_BASE_URL = os.environ.get("SERPER_BASE_URL", "https://google.serper.dev")
-
 # API for SearXNG (local search engine)
 SEARXNG_BASE_URL = os.environ.get("SEARXNG_BASE_URL", "http://127.0.0.1:8080")
 SEARXNG_ENABLED = os.environ.get("SEARXNG_ENABLED", "true").lower() in ("true", "1", "yes")
@@ -33,18 +29,7 @@ SEARXNG_ENABLED = os.environ.get("SEARXNG_ENABLED", "true").lower() in ("true", 
 CRAWL4AI_BASE_URL = os.environ.get("CRAWL4AI_BASE_URL", "http://127.0.0.1:11235")
 CRAWL4AI_ENABLED = os.environ.get("CRAWL4AI_ENABLED", "true").lower() in ("true", "1", "yes")
 
-# API for Web Scraping
-JINA_API_KEY = os.environ.get("JINA_API_KEY")
-JINA_BASE_URL = os.environ.get("JINA_BASE_URL", "https://r.jina.ai")
-
-# API for Linux Sandbox
-E2B_API_KEY = os.environ.get("E2B_API_KEY")
-
-# Microsandbox (local alternative to E2B)
-MICROSANDBOX_API_KEY = os.environ.get("MICROSANDBOX_API_KEY")
-MICROSANDBOX_BASE_URL = os.environ.get("MICROSANDBOX_BASE_URL", "http://127.0.0.1:5555")
-
-# API for Open-Source Audio Transcription Tool (local Whisper-compatible model)
+# Microsandbox Docker-based Python (local, zero API key)
 WHISPER_BASE_URL = os.environ.get("WHISPER_BASE_URL", "http://localhost:8001/v1")
 WHISPER_API_KEY = os.environ.get("WHISPER_API_KEY", "not-needed")
 WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL_NAME", "qwen3.5")
@@ -59,25 +44,11 @@ REASONING_API_KEY = os.environ.get("REASONING_API_KEY", "not-needed")
 REASONING_BASE_URL = os.environ.get("REASONING_BASE_URL", "http://localhost:8001/v1/chat/completions")
 REASONING_MODEL_NAME = os.environ.get("REASONING_MODEL_NAME", "qwen3.5")
 
-# API for Claude Sonnet 3.7 as Commercial Tools
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-ANTHROPIC_BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
-
-# API Keys for Commercial Tools
+# API for OpenAI-compatible services (used by tool-transcribe)
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL")
 
-# API for Sogou Search
-TENCENTCLOUD_SECRET_ID = os.environ.get("TENCENTCLOUD_SECRET_ID")
-TENCENTCLOUD_SECRET_KEY = os.environ.get("TENCENTCLOUD_SECRET_KEY")
-
-# API for Summary LLM
-SUMMARY_LLM_API_KEY = os.environ.get("SUMMARY_LLM_API_KEY")
-SUMMARY_LLM_BASE_URL = os.environ.get("SUMMARY_LLM_BASE_URL")
-SUMMARY_LLM_MODEL_NAME = os.environ.get("SUMMARY_LLM_MODEL_NAME")
-
-
-# MCP server configuration generation function
+# API for Open-Source Reasoning Tool (local reasoning model)
 def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
     """
     Create MCP server configurations based on agent configuration.
@@ -96,61 +67,6 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
         - blacklist: Set of (server_name, tool_name) tuples to exclude
     """
     configs = []
-
-    if (
-        agent_cfg.get("tools", None) is not None
-        and "tool-google-search" in agent_cfg["tools"]
-    ):
-        if not SERPER_API_KEY:
-            raise ValueError(
-                "SERPER_API_KEY not set, tool-google-search will be unavailable."
-            )
-
-        configs.append(
-            {
-                "name": "tool-google-search",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=[
-                        "-m",
-                        "miroflow_tools.mcp_servers.searching_google_mcp_server",
-                    ],
-                    env={
-                        k: v for k, v in {
-                            "SERPER_API_KEY": SERPER_API_KEY,
-                            "SERPER_BASE_URL": SERPER_BASE_URL,
-                            "JINA_API_KEY": JINA_API_KEY,
-                            "JINA_BASE_URL": JINA_BASE_URL,
-                        }.items() if v is not None
-                    },
-                ),
-            }
-        )
-
-    if (
-        agent_cfg.get("tools", None) is not None
-        and "tool-sogou-search" in agent_cfg["tools"]
-    ):
-        configs.append(
-            {
-                "name": "tool-sogou-search",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=[
-                        "-m",
-                        "miroflow_tools.mcp_servers.searching_sogou_mcp_server",
-                    ],
-                    env={
-                        k: v for k, v in {
-                            "TENCENTCLOUD_SECRET_ID": TENCENTCLOUD_SECRET_ID,
-                            "TENCENTCLOUD_SECRET_KEY": TENCENTCLOUD_SECRET_KEY,
-                            "JINA_API_KEY": JINA_API_KEY,
-                            "JINA_BASE_URL": JINA_BASE_URL,
-                        }.items() if v is not None
-                    },
-                ),
-            }
-        )
 
     # SearXNG Search Tool (local/open source)
     if (
@@ -178,36 +94,7 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
                 }
             )
 
-    # Python execution: prefer microsandbox if available, fallback to E2B
-    # Note: For a fully local setup without API keys, use 'microsandbox-docker' tool instead
-    if agent_cfg.get("tools", None) is not None and "tool-python" in agent_cfg["tools"]:
-        env = {}
-        if MICROSANDBOX_API_KEY:
-            env = {
-                "E2B_API_KEY": MICROSANDBOX_API_KEY,  # Use microsandbox key in E2B format
-                "E2B_BASE_URL": f"{MICROSANDBOX_BASE_URL}/api/v1",
-            }
-        elif E2B_API_KEY:
-            env = {"E2B_API_KEY": E2B_API_KEY}
-        else:
-            print(
-                "Warning: Neither E2B_API_KEY nor MICROSANDBOX_API_KEY set, tool-python may not work. "
-                "For local code execution without API keys, use 'microsandbox-docker' tool instead."
-            )
-        
-        if env:
-            configs.append(
-                {
-                    "name": "tool-python",
-                    "params": StdioServerParameters(
-                        command=sys.executable,
-                        args=["-m", "miroflow_tools.mcp_servers.python_mcp_server"],
-                        env=env,
-                    ),
-                }
-            )
-
-    # Microsandbox Docker-based Python (local alternative to E2B)
+    # Microsandbox Docker-based Python (local, zero API key)
     if agent_cfg.get("tools", None) is not None and "microsandbox-docker" in agent_cfg["tools"]:
         configs.append(
             {
@@ -222,23 +109,6 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
                         "MICROSANDBOX_IMAGE": os.environ.get(
                             "MICROSANDBOX_IMAGE", "microsandbox/python:latest"
                         ),
-                    },
-                ),
-            }
-        )
-
-    if agent_cfg.get("tools", None) is not None and "tool-vqa" in agent_cfg["tools"]:
-        configs.append(
-            {
-                "name": "tool-vqa",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=["-m", "miroflow_tools.mcp_servers.vision_mcp_server"],
-                    env={
-                        k: v for k, v in {
-                            "OPENAI_API_KEY": OPENAI_API_KEY,
-                            "OPENAI_BASE_URL": OPENAI_BASE_URL,
-                        }.items() if v is not None
                     },
                 ),
             }
@@ -301,27 +171,6 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
 
     if (
         agent_cfg.get("tools", None) is not None
-        and "tool-reasoning" in agent_cfg["tools"]
-    ):
-        configs.append(
-            {
-                "name": "tool-reasoning",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=[
-                        "-m",
-                        "miroflow_tools.mcp_servers.reasoning_mcp_server",
-                    ],
-                    env={
-                        "ANTHROPIC_API_KEY": ANTHROPIC_API_KEY,
-                        "ANTHROPIC_BASE_URL": ANTHROPIC_BASE_URL,
-                    },
-                ),
-            }
-        )
-
-    if (
-        agent_cfg.get("tools", None) is not None
         and "tool-reasoning-os" in agent_cfg["tools"]
     ):
         configs.append(
@@ -368,57 +217,6 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
             }
         )
 
-    if (
-        agent_cfg.get("tools", None) is not None
-        and "search_and_scrape_webpage" in agent_cfg["tools"]
-    ):
-        configs.append(
-            {
-                "name": "search_and_scrape_webpage",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=[
-                        "-m",
-                        "miroflow_tools.dev_mcp_servers.search_and_scrape_webpage",
-                    ],
-                    env={
-                        k: v for k, v in {
-                            "SERPER_API_KEY": SERPER_API_KEY,
-                            "SERPER_BASE_URL": SERPER_BASE_URL,
-                            "TENCENTCLOUD_SECRET_ID": TENCENTCLOUD_SECRET_ID,
-                            "TENCENTCLOUD_SECRET_KEY": TENCENTCLOUD_SECRET_KEY,
-                        }.items() if v is not None
-                    },
-                ),
-            }
-        )
-
-    if (
-        agent_cfg.get("tools", None) is not None
-        and "jina_scrape_llm_summary" in agent_cfg["tools"]
-    ):
-        configs.append(
-            {
-                "name": "jina_scrape_llm_summary",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=[
-                        "-m",
-                        "miroflow_tools.dev_mcp_servers.jina_scrape_llm_summary",
-                    ],
-                    env={
-                        k: v for k, v in {
-                            "JINA_API_KEY": JINA_API_KEY,
-                            "JINA_BASE_URL": JINA_BASE_URL,
-                            "SUMMARY_LLM_BASE_URL": SUMMARY_LLM_BASE_URL,
-                            "SUMMARY_LLM_MODEL_NAME": SUMMARY_LLM_MODEL_NAME,
-                            "SUMMARY_LLM_API_KEY": SUMMARY_LLM_API_KEY,
-                        }.items() if v is not None
-                    },
-                ),
-            }
-        )
-
     # Crawl4AI Web Scraping Tool (local/open source - no API key needed)
     if (
         agent_cfg.get("tools", None) is not None
@@ -444,28 +242,6 @@ def create_mcp_server_parameters(cfg: DictConfig, agent_cfg: DictConfig):
                     ),
                 }
             )
-
-    if (
-        agent_cfg.get("tools", None) is not None
-        and "stateless_python" in agent_cfg["tools"]
-    ):
-        configs.append(
-            {
-                "name": "stateless_python",
-                "params": StdioServerParameters(
-                    command=sys.executable,
-                    args=[
-                        "-m",
-                        "miroflow_tools.dev_mcp_servers.stateless_python_server",
-                    ],
-                    env={
-                        k: v for k, v in {
-                            "E2B_API_KEY": E2B_API_KEY,
-                        }.items() if v is not None
-                    },
-                ),
-            }
-        )
 
     if (
         agent_cfg.get("tools", None) is not None
@@ -577,23 +353,12 @@ def get_env_info(cfg: DictConfig) -> dict:
             else {}
         ),
         # API Keys (masked for security)
-        "has_serper_api_key": bool(SERPER_API_KEY),
-        "has_jina_api_key": bool(JINA_API_KEY),
-        "has_anthropic_api_key": bool(ANTHROPIC_API_KEY),
         "has_openai_api_key": bool(OPENAI_API_KEY),
-        "has_e2b_api_key": bool(E2B_API_KEY),
-        "has_tencent_secret_id": bool(TENCENTCLOUD_SECRET_ID),
-        "has_tencent_secret_key": bool(TENCENTCLOUD_SECRET_KEY),
-        "has_summary_llm_api_key": bool(SUMMARY_LLM_API_KEY),
         "has_searxng": SEARXNG_ENABLED,
         # Base URLs
         "openai_base_url": OPENAI_BASE_URL,
-        "anthropic_base_url": ANTHROPIC_BASE_URL,
-        "jina_base_url": JINA_BASE_URL,
-        "serper_base_url": SERPER_BASE_URL,
         "searxng_base_url": SEARXNG_BASE_URL,
         "whisper_base_url": WHISPER_BASE_URL,
         "vision_base_url": VISION_BASE_URL,
         "reasoning_base_url": REASONING_BASE_URL,
-        "summary_llm_base_url": SUMMARY_LLM_BASE_URL,
     }

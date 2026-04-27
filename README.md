@@ -405,27 +405,13 @@ cp .env.example .env
 
 | Server | Description | Tools Provided | Required Environment Variables |
 |:-------|:------------|:---------------|:-------------------------------|
-| **`tool-python`** | Execution environment and file management (E2B sandbox) | `create_sandbox`, `run_command`, `run_python_code`, `upload_file_from_local_to_sandbox`, `download_file_from_sandbox_to_local`, `download_file_from_internet_to_sandbox` | `E2B_API_KEY` |
-| **`search_and_scrape_webpage`** | Google search via Serper API | `google_search` | `SERPER_API_KEY`, `SERPER_BASE_URL` |
-| **`jina_scrape_llm_summary`** | Web scraping with LLM-based information extraction | `scrape_and_extract_info` | `JINA_API_KEY`, `JINA_BASE_URL`, `SUMMARY_LLM_BASE_URL`, `SUMMARY_LLM_MODEL_NAME`, `SUMMARY_LLM_API_KEY` |
+| **`microsandbox-docker`** | Local Docker code execution (no API key) | `run_python_code`, `run_python_with_packages`, `check_sandbox_health`, `get_available_packages` | None |
+| **`tool-searxng-search`** | Local web search (no API key) | `searxng_search` | None |
+| **`tool-crawl4ai`** | Local web scraping (no API key) | `crawl_page`, `get_markdown`, `extract_links`, `extract_media` | None |
 
 **Minimal `.env` configuration example:**
 
 ```bash
-# Required for MiroThinker v1.5 and v1.0 (minimal setup)
-SERPER_API_KEY=your_serper_key
-SERPER_BASE_URL="https://google.serper.dev"
-JINA_API_KEY=your_jina_key
-JINA_BASE_URL="https://r.jina.ai"
-E2B_API_KEY=your_e2b_key
-
-# Required for jina_scrape_llm_summary
-# Note: Summary LLM can be a small model (e.g., Qwen3-14B or GPT-5-Nano)
-# The choice has minimal impact on performance, use what's most convenient
-SUMMARY_LLM_BASE_URL="https://your_summary_llm_base_url/v1/chat/completions"
-SUMMARY_LLM_MODEL_NAME=your_llm_model_name  # e.g., "Qwen/Qwen3-14B" or "gpt-5-nano"
-SUMMARY_LLM_API_KEY=your_llm_api_key  # Optional, depends on LLM provider
-
 # Required for benchmark evaluation (LLM-as-a-Judge)
 OPENAI_API_KEY=your_openai_key  # Required for running benchmark evaluations
 OPENAI_BASE_URL="https://api.openai.com/v1"  # Optional, defaults to OpenAI's API
@@ -433,7 +419,8 @@ OPENAI_BASE_URL="https://api.openai.com/v1"  # Optional, defaults to OpenAI's AP
 
 > **💡 Why this is minimal**: These 3 MCP servers cover the core capabilities needed for research tasks: web search, content extraction, and code execution. All other servers are optional enhancements.
 >
-> **🤖 Summary LLM**: The `SUMMARY_LLM` can be a small model like Qwen3-14B or GPT-5-Nano. The choice has minimal impact on overall performance, use whichever is most convenient for your setup.
+> **🔧 Local-first**: `tool-searxng-search` and `tool-crawl4ai` require no API keys — they use locally running SearXNG and Crawl4AI services.
+>
 >
 > **📊 For Benchmark Evaluation**: If you plan to run benchmark evaluations, you also need `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`) for LLM-as-a-Judge functionality used in evaluation scripts.
 >
@@ -448,12 +435,9 @@ The following optional tools are available but were not used in MiroThinker v1.0
 
 | Server Name          | Type         | Description                                 |
 |:---------------------|:-------------|:--------------------------------------------|
-| `tool-vqa`           | Commercial   | Vision processing using Claude              |
-| `tool-vqa-os`        | Open-Source  | Vision processing (open-source alternative) |
-| `tool-transcribe`    | Commercial   | Audio transcription using OpenAI            |
+| `tool-vqa-os`        | Open-Source  | Vision processing using local qwen3.5       |
 | `tool-transcribe-os` | Open-Source  | Audio transcription using Whisper           |
-| `tool-reasoning`     | Commercial   | Reasoning engine using Claude               |
-| `tool-reasoning-os`  | Open-Source  | Reasoning engine (open-source alternative)  |
+| `tool-reasoning-os`  | Open-Source  | Reasoning engine using local qwen3.5        |
 | `tool-reading`       | Open-Source  | Document reading using MarkItDown           |
 | `tool-google-search` | Commercial   | Web search using Google + scraping          |
 | `tool-sogou-search` | Commercial   | Web search using Sogou (Chinese)           |
@@ -472,8 +456,8 @@ The `apps/miroflow-agent/conf/agent/` directory contains several pre-configured 
 
 | Configuration                          | Description | Max Turns | Context Retention | Required Environment Variables                                                                                                                               | Recommended For |
 |:---------------------------------------|:------------|:----------|:------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------|
-| **`mirothinker_1.7_keep5_max200`** ⭐  | Single-agent with context management | 200 | Keep 5 most recent | `SERPER_API_KEY`, `SERPER_BASE_URL`, `JINA_API_KEY`, `JINA_BASE_URL`, `E2B_API_KEY`, `SUMMARY_LLM_BASE_URL`, `SUMMARY_LLM_MODEL_NAME`, `SUMMARY_LLM_API_KEY` | **1.7 (recommended for most tasks)** |
-| **`mirothinker_1.7_keep5_max300`** ⭐  | Single-agent with context management | 300 | Keep 5 most recent | Same as above                                                                                                                              | **1.7 (for BrowseComp & BrowseComp-ZH)** |
+| **`mirothinker_1.7_keep5_max200`** ⭐  | Single-agent with context management | 200 | Keep 5 most recent | None (fully local) | **1.7 (recommended for most tasks)** |
+| **`mirothinker_1.7_keep5_max300`** ⭐  | Single-agent with context management | 300 | Keep 5 most recent | Same as above      | **1.7 (for BrowseComp & BrowseComp-ZH)** |
 
 
 <details>
@@ -481,13 +465,13 @@ The `apps/miroflow-agent/conf/agent/` directory contains several pre-configured 
 
 | Configuration            | Description | Max Turns | Context Retention | Required Environment Variables | Recommended For |
 |:-------------------------|:------------|:----------|:------------------|:-------------------------------|:----------------|
-| **`mirothinker_v1.5_keep5_max200`**  | Single-agent with context management | 200 | Keep 5 most recent | `SERPER_API_KEY`, `SERPER_BASE_URL`, `JINA_API_KEY`, `JINA_BASE_URL`, `E2B_API_KEY`, `SUMMARY_LLM_BASE_URL`, `SUMMARY_LLM_MODEL_NAME`, `SUMMARY_LLM_API_KEY` | **v1.5 (recommended for most tasks)** |
-| **`mirothinker_v1.5_keep5_max400`**  | Single-agent with context management | 400 | Keep 5 most recent | Same as above                                                                                                                              | **v1.5 (for BrowseComp & BrowseComp-ZH)** |
+| **`mirothinker_v1.5_keep5_max200`**  | Single-agent with context management | 200 | Keep 5 most recent | None (fully local) | **v1.5 (recommended for most tasks)** |
+| **`mirothinker_v1.5_keep5_max400`**  | Single-agent with context management | 400 | Keep 5 most recent | Same as above      | **v1.5 (for BrowseComp & BrowseComp-ZH)** |
 | **`mirothinker_v1.5`**                 | Single-agent for MiroThinker v1.5 | 600 | Keep all results | Same as above | **v1.5** |
 | **`mirothinker_v1.0_keep5`**           | Single-agent with context management | 600 | Keep 5 most recent | Same as above                                                                                                                                   | **v1.0** |
 | **`mirothinker_v1.0`**                 | Single-agent for MiroThinker v1.0 | 600 | Keep all results | Same as above | **v1.0** |
-| **`multi_agent`**        | Multi-agent with commercial tools (v0.1/v0.2) | 50 | Keep all results | `E2B_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `SERPER_API_KEY`, `SERPER_BASE_URL`, `JINA_API_KEY`, `JINA_BASE_URL` | v0.1/v0.2 |
-| **`multi_agent_os`**     | Multi-agent with open-source tools (v0.1/v0.2) | 50 | Keep all results | `E2B_API_KEY`, `VISION_API_KEY`, `VISION_BASE_URL`, `VISION_MODEL_NAME`, `WHISPER_API_KEY`, `WHISPER_BASE_URL`, `WHISPER_MODEL_NAME`, `REASONING_API_KEY`, `REASONING_BASE_URL`, `REASONING_MODEL_NAME`, `SERPER_API_KEY`, `SERPER_BASE_URL`, `JINA_API_KEY`, `JINA_BASE_URL` | v0.1/v0.2 |
+| **`multi_agent`**        | Multi-agent with commercial tools (v0.1/v0.2) | 50 | Keep all results | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | v0.1/v0.2 |
+| **`multi_agent_os`**     | Multi-agent with open-source tools (v0.1/v0.2) | 50 | Keep all results | `VISION_API_KEY`, `VISION_BASE_URL`, `VISION_MODEL_NAME`, `WHISPER_API_KEY`, `WHISPER_BASE_URL`, `WHISPER_MODEL_NAME`, `REASONING_API_KEY`, `REASONING_BASE_URL`, `REASONING_MODEL_NAME` | v0.1/v0.2 |
 
 </details>
 
@@ -510,12 +494,12 @@ defaults:
 
 main_agent:
   tools:
-    - tool-python                    # Execution environment
-    - search_and_scrape_webpage      # Google search
-    - jina_scrape_llm_summary        # Web scraping with LLM
-    - tool-vqa                       # Vision processing (optional)
-    - tool-transcribe                # Audio processing (optional)
-    - tool-reasoning                 # Reasoning engine (optional)
+    - microsandbox-docker            # Local code execution (no API key)
+    - tool-searxng-search           # Local web search (no API key)
+    - tool-crawl4ai                 # Local web scraping (no API key)
+    - tool-vqa-os                    # Vision processing (optional)
+    - tool-transcribe-os             # Audio processing (optional)
+    - tool-reasoning-os              # Reasoning engine (optional)
     - tool-reading                   # Document reading (optional)
   max_turns: 300  # Maximum number of turns
 
@@ -523,9 +507,9 @@ sub_agents:
   agent-browsing:  # Optional sub-agent
     tools:
       - tool-google-search
-      - tool-vqa
+      - tool-vqa-os
       - tool-reading
-      - tool-python
+      - microsandbox-docker
     max_turns: 50
 
 keep_tool_result: -1  # Context retention budget: -1 keeps all tool results, or specify K to keep only the K most recent tool responses
@@ -595,10 +579,6 @@ ANTHROPIC_API_KEY=your_anthropic_key
 TENCENTCLOUD_SECRET_ID=your_tencent_cloud_secret_id
 TENCENTCLOUD_SECRET_KEY=your_tencent_cloud_secret_key
 
-# API for Summary LLM (can use small models like Qwen3-14B or GPT-5-Nano)
-SUMMARY_LLM_BASE_URL="https://your_summary_llm_base_url/v1/chat/completions"
-SUMMARY_LLM_MODEL_NAME=your_summary_llm_model_name  # e.g., "Qwen/Qwen3-14B" or "gpt-5-nano"
-SUMMARY_LLM_API_KEY=your_summary_llm_api_key
 ```
 
 </details>
@@ -862,10 +842,7 @@ bash scripts/collect_trace_qwen3.sh
 
 **A:** You need these keys for minimal setup:
 
-- **SERPER_API_KEY**: Get from [Serper.dev](https://serper.dev/) (Google search API)
-- **JINA_API_KEY**: Get from [Jina.ai](https://jina.ai/) (Web scraping)
 - **E2B_API_KEY**: Get from [E2B.dev](https://e2b.dev/) (Code execution sandbox)
-- **SUMMARY_LLM_API_KEY**: Your LLM API credentials (for content summarization). Can be a small model like Qwen3-14B or GPT-5-Nano—the choice has minimal impact on performance.
 - **OPENAI_API_KEY**: Get from [OpenAI](https://platform.openai.com/) (Required for benchmark evaluation, used for LLM-as-a-Judge)
 - **OPENAI_BASE_URL**: Optional, defaults to `https://api.openai.com/v1`. Can be changed to use OpenAI-compatible APIs.
 
@@ -906,8 +883,8 @@ bash scripts/collect_trace_qwen3.sh
 
 - **E2B errors**: Verify `E2B_API_KEY` is valid and account has credits
 - **Serper errors**: Check `SERPER_API_KEY` and rate limits
-- **Jina errors**: Verify `JINA_API_KEY` and `JINA_BASE_URL` are correct
-- **LLM summarization errors**: Check `SUMMARY_LLM_*` variables and agent availability
+- **SearXNG errors**: Verify SearXNG is running on port 8080
+- **Crawl4AI errors**: Verify Crawl4AI is running on port 11235
 
 #### **Q: How to monitor long-running evaluations?**
 

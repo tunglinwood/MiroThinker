@@ -8,6 +8,7 @@ from .health import router as health_router
 from .configs import router as configs_router
 from .uploads import router as uploads_router
 from .auth import router as auth_router
+from .admin import router as admin_router
 
 __all__ = [
     "tasks_router",
@@ -15,4 +16,5 @@ __all__ = [
     "configs_router",
     "uploads_router",
     "auth_router",
+    "admin_router",
 ]

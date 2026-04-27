@@ -120,9 +120,9 @@ Once you have deployed the tools, configure your agent to use them:
 ```yaml
 main_agent:
   tools:
-    - tool-python
-    - search_and_scrape_webpage
-    - jina_scrape_llm_summary
+    - microsandbox-docker   # Local Docker code execution (no API key)
+    - tool-searxng-search   # Local SearXNG search (no API key)
+    - tool-crawl4ai         # Local Crawl4AI scraping (no API key)
     - tool-transcribe-os    # Use local Whisper deployment
     - tool-vqa-os           # Use local Qwen2.5-VL deployment
     - tool-reasoning-os     # Use local Qwen3-235B deployment
@@ -143,8 +143,7 @@ uv run main.py llm=qwen-3 agent=my_custom_config llm.base_url=https://your_base_
 If you prefer not to deploy these tools locally, you can use commercial alternatives:
 
 - **`tool-transcribe`**: Uses OpenAI's GPT-4o mini Transcribe API
-- **`tool-vqa`**: Uses Claude Sonnet 3.7 API
-- **`tool-reasoning`**: Uses Claude Sonnet 3.7 API
+
 
 Simply replace `-os` versions with commercial versions in your agent configuration and configure the corresponding API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
 

@@ -240,12 +240,10 @@ class TaskLog:
             icon = "🧠 "
         elif "ToolManager" in step_name or "Tool Call" in step_name:
             icon = "🔧 "
-        elif "tool-python" in step_name.lower():
+        elif "microsandbox-docker" in step_name.lower():
             icon = "🐍 "
-        elif "tool-google-search" in step_name.lower():
+        elif "tool-searxng-search" in step_name.lower() or "search" in step_name.lower():
             icon = "🔍 "
-        elif "tool-browser" in step_name.lower() or "playwright" in step_name.lower():
-            icon = "🌐 "
 
         # Add icon to step_name
         step_name_with_icon = f"{icon}{step_name}"

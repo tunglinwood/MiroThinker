@@ -1,13 +1,13 @@
 # conf/llm/default.yaml - Default LLM configuration
-provider: "anthropic" # openai, anthropic, qwen
-model_name: "claude-3-7-sonnet-20250219"
+provider: "openai"
+model_name: "qwen3.5"
 async_client: false
-temperature: 0.3
-top_p: 1.0
+temperature: 0.7
+top_p: 0.95
 min_p: 0.0
 top_k: -1
-max_tokens: 4096
-max_context_length: 200000
-api_key: ""
-base_url: https://api.anthropic.com
+max_tokens: 8192
+max_context_length: 262144
+api_key: "not-needed"
+base_url: "http://localhost:8001/v1"
 repetition_penalty: 1.0

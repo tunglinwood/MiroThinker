@@ -20,8 +20,7 @@ sys.path.insert(0, str(project_root))
 dotenv.load_dotenv(project_root / ".env")
 
 from api.dependencies import init_dependencies, get_task_executor
-from api.routes import tasks_router, health_router, configs_router, uploads_router, auth_router
-from src.config.settings import create_mcp_server_parameters
+from api.routes import tasks_router, health_router, configs_router, uploads_router, auth_router, admin_router
 from hydra import compose, initialize_config_dir
 
 
@@ -41,7 +40,8 @@ async def lifespan(app: FastAPI):
     # Initialize tool manager with default config
     print("Initializing tool manager...")
     try:
-        with initialize_config_dir(config_dir="conf"):
+        config_dir = str(Path(__file__).parent / "conf")
+        with initialize_config_dir(config_dir=config_dir):
             cfg = compose(
                 config_name="config",
                 overrides=[
@@ -50,7 +50,6 @@ async def lifespan(app: FastAPI):
                 ],
             )
         task_executor = get_task_executor()
-        server_configs = create_mcp_server_parameters(cfg)
         await task_executor.initialize_components(cfg)
         print("Tool manager initialized successfully")
     except Exception as e:
@@ -79,10 +78,14 @@ app.add_middleware(
         "http://localhost:5173",  # Vite dev server
         "http://localhost:5174",  # Vite dev server (fallback port)
         "http://localhost:3000",  # Next.js
+        "http://localhost:3002",  # Next.js (new port)
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3002",
         "http://174.1.21.1:5173",
         "http://174.1.21.1:5174",
+        "http://174.1.21.1:3000",
+        "http://174.1.21.1:3002",
         "http://localhost:8080",  # Other common ports
     ],
     allow_credentials=True,
@@ -96,6 +99,7 @@ app.include_router(health_router)
 app.include_router(configs_router)
 app.include_router(uploads_router)
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 
 @app.get("/")

@@ -133,14 +133,8 @@ class OpenAIClient(BaseClient):
                 "stream": False,
                 "top_p": self.top_p,
                 "extra_body": {},
+                "max_tokens": current_max_tokens,
             }
-            # Check if the model is GPT-5, and adjust the parameter accordingly
-            if "gpt-5" in self.model_name:
-                # Use 'max_completion_tokens' for GPT-5
-                params["max_completion_tokens"] = current_max_tokens
-            else:
-                # Use 'max_tokens' for GPT-4 and other models
-                params["max_tokens"] = current_max_tokens
 
             # Add repetition_penalty if it's not the default value
             if self.repetition_penalty != 1.0:
@@ -148,6 +142,13 @@ class OpenAIClient(BaseClient):
 
             if "deepseek-v3-1" in self.model_name:
                 params["extra_body"]["thinking"] = {"type": "enabled"}
+
+            if "qwen3.5" in self.model_name:
+                params["extra_body"]["chat_template_kwargs"] = {"enable_thinking": True}
+                params["extra_body"]["separate_reasoning"] = True
+                params["extra_body"]["top_k"] = 20
+                params["temperature"] = 1.0
+                params["presence_penalty"] = 1.5
 
             # auto-detect if we need to continue from the last assistant message
             if messages_for_llm and messages_for_llm[-1].get("role") == "assistant":
@@ -291,7 +292,12 @@ class OpenAIClient(BaseClient):
         from ...utils.parsing_utils import fix_server_name_in_text
 
         if llm_response.choices[0].finish_reason == "stop":
-            assistant_response_text = llm_response.choices[0].message.content or ""
+            reasoning_content = getattr(llm_response.choices[0].message, "reasoning_content", None) or ""
+            content = llm_response.choices[0].message.content or ""
+            if reasoning_content:
+                assistant_response_text = f"<think>\n{reasoning_content}\n</think>\n{content}"
+            else:
+                assistant_response_text = content
             assistant_response_text = fix_server_name_in_text(assistant_response_text)
 
             message_history.append(
@@ -299,7 +305,12 @@ class OpenAIClient(BaseClient):
             )
 
         elif llm_response.choices[0].finish_reason == "length":
-            assistant_response_text = llm_response.choices[0].message.content or ""
+            reasoning_content = getattr(llm_response.choices[0].message, "reasoning_content", None) or ""
+            content = llm_response.choices[0].message.content or ""
+            if reasoning_content:
+                assistant_response_text = f"<think>\n{reasoning_content}\n</think>\n{content}"
+            else:
+                assistant_response_text = content
             assistant_response_text = fix_server_name_in_text(assistant_response_text)
             if assistant_response_text == "":
                 assistant_response_text = "LLM response is empty."

@@ -309,6 +309,8 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
                 {/* Messages for this turn */}
                 {turn.messages.map((msg, idx) => {
                   const parsed = parseMessageContent(msg.content);
+                  const hasContent = parsed.thinking || (parsed.text && msg.role === 'assistant');
+                  if (!hasContent) return null;
 
                   return (
                     <div key={idx} className="space-y-3">

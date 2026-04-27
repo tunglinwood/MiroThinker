@@ -95,16 +95,6 @@ E2B_API_KEY=your_e2b_key
 # Required - Web Scraping
 JINA_API_KEY=your_jina_key
 
-# Required - Summary LLM (for webpage summarization)
-# Option 1: Use OpenAI GPT-5-Nano (recommended, cost-effective)
-SUMMARY_LLM_BASE_URL=https://api.openai.com/v1
-SUMMARY_LLM_MODEL_NAME=gpt-5-nano
-SUMMARY_LLM_API_KEY=your_openai_key
-
-# Option 2: Use MiroThinker itself (if you have enough VRAM)
-# SUMMARY_LLM_BASE_URL=http://0.0.0.0:61005/v1
-# SUMMARY_LLM_MODEL_NAME=MiroThinker
-# SUMMARY_LLM_API_KEY=none
 ```
 
 ### 2. **Install Dependencies**

@@ -25,21 +25,16 @@ def parse_tool_server_mapping(system_prompt: str) -> dict:
     """
     Parse system prompt to extract tool_name → server_name mapping.
 
-    Parses patterns like:
-        ## Server name: tool-python
-        ### Tool name: run_python_code
-
-    Only extracts mappings for the 3 target tools that models commonly get wrong:
-    run_python_code, google_search, scrape_and_extract_info.
+    Only extracts mappings for tools that models commonly get wrong.
+    (Currently none — all removed tools were commercial/legacy variants.)
 
     Args:
         system_prompt: The system prompt containing MCP tool definitions
 
     Returns:
-        Dict mapping tool_name to correct server_name, e.g.
-        {"run_python_code": "tool-python", "google_search": "search_and_scrape_webpage", ...}
+        Dict mapping tool_name to correct server_name.
     """
-    TARGET_TOOLS = {"run_python_code", "google_search", "scrape_and_extract_info"}
+    TARGET_TOOLS = set()
     mapping = {}
     current_server = None
     for line in system_prompt.split("\n"):

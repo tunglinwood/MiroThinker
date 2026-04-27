@@ -553,8 +553,9 @@ async def get_task_telemetry(
             if info["tool_name"]:
                 pending_tool_start = {**info, "turn": current_turn}
 
-        # Tool call result — match with pending start
-        if "Tool Call Success" in step_name or ("Tool Call" in step_name and "Turn" in step_name):
+        # Tool call result — only from Main Agent logs (have full result data)
+        # Skip "Tool Call Success" from ToolManager — those are duplicates without result_preview
+        if "Tool Call" in step_name and "Turn" in step_name:
             msg = step.get("message", "")
             duration_ms = _parse_duration_ms(msg)
             turn_data["duration_ms"] += duration_ms
@@ -562,11 +563,14 @@ async def get_task_telemetry(
             # Try to extract tool name from the result message
             info = _extract_tool_call_info(step)
 
-            # If not found, fall back to pending_tool_start
-            if not info["tool_name"] and pending_tool_start:
-                info["tool_name"] = pending_tool_start["tool_name"]
-                info["server_name"] = pending_tool_start["server_name"]
-                info["arguments"] = info["arguments"] or pending_tool_start.get("arguments", {})
+            # Fall back to pending_tool_start for missing fields (server_name, arguments)
+            if pending_tool_start:
+                if not info["tool_name"]:
+                    info["tool_name"] = pending_tool_start["tool_name"]
+                if not info["server_name"]:
+                    info["server_name"] = pending_tool_start["server_name"]
+                if not info["arguments"]:
+                    info["arguments"] = pending_tool_start.get("arguments", {})
             pending_tool_start = None
 
             if info["tool_name"]:

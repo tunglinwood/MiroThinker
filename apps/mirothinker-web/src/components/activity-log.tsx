@@ -27,14 +27,20 @@ const filterLabels: Record<LogFilter, string> = {
 };
 
 function classifyLogType(log: LogEntry): LogFilter {
+  // Prefer the explicit type set by the frontend
+  if (log.type === 'retention') return 'retention';
+  if (log.type === 'context') return 'context';
+  if (log.type === 'status') return 'status';
   if (log.type === 'tool_call') return 'tool';
+
+  // Fallback: classify based on content
   const input = (log.input || '').toLowerCase();
   const output = (log.output || '').toLowerCase();
   const combined = input + output;
 
-  if (combined.includes('retention') || combined.includes('keeping') || combined.includes('message')) return 'retention';
+  if (combined.includes('retention') || combined.includes('keeping')) return 'retention';
   if (combined.includes('context') || combined.includes('limit') || /\d+\/\d+/.test(combined)) return 'context';
-  if (combined.includes('status') || combined.includes('stop') || combined.includes('completed')) return 'status';
+  if (combined.includes('stop') || combined.includes('completed') || combined.includes('finished')) return 'status';
   return 'tool';
 }
 
@@ -112,18 +118,25 @@ export function ActivityLog({ logs }: ActivityLogProps) {
 }
 
 function getLogDisplay(log: LogEntry): string {
-  if (log.input) {
-    const input = log.input.length > 200 ? log.input.slice(0, 200) + '...' : log.input;
-    // Try to extract meaningful part
-    if (input.includes('retention')) {
-      return input;
+  const input = log.input || '';
+  if (!input) return log.type || 'Unknown';
+
+  // For backend-format logs, input is "step_name: message"
+  const colonIdx = input.indexOf(': ');
+  if (colonIdx > 0) {
+    const stepName = input.slice(0, colonIdx);
+    const message = input.slice(colonIdx + 2);
+
+    // Show only the meaningful part, stripping emoji prefixes
+    const cleanStep = stepName.replace(/[\u{1F300}-\u{1F9FF}]\u{FE0F}?/gu, '').trim();
+
+    // For retention entries, show a truncated summary
+    if (log.type === 'retention' && message.length > 150) {
+      return `${cleanStep}: ${message.slice(0, 150)}...`;
     }
-    if (input.includes('context') || /\d+\/\d+/.test(input)) {
-      return input;
-    }
+    return `${cleanStep}: ${message.length > 200 ? message.slice(0, 200) + '...' : message}`;
   }
-  if (log.type === 'tool_call' && log.tool_name) {
-    return `${log.server_name || ''}/${log.tool_name}`;
-  }
-  return log.type || 'Unknown';
+
+  // Fallback: show input directly
+  return input.length > 200 ? input.slice(0, 200) + '...' : input;
 }

@@ -31,10 +31,8 @@ The following tools were used in the MiroThinker v1.0 and v1.5 evaluation:
 
 | Category                   | Server Name                 | Tools                                                                                                                | Key Environment Variables                                                                 | Link                                     |
 |----------------------------|-----------------------------|----------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|------------------------------------------|
-| **Execution Environment**  | `tool-python`               | `create_sandbox`, `run_command`, `run_python_code`                                                                   | `E2B_API_KEY`, `LOGS_DIR`                                                                 | [Details](#tool-python)                  |
-| **File Management**        | `tool-python`               | `upload_file_from_local_to_sandbox`, `download_file_from_sandbox_to_local`, `download_file_from_internet_to_sandbox` | `E2B_API_KEY`, `LOGS_DIR`                                                                 | [Details](#tool-python)                  |
-| **Information Retrieval**  | `search_and_scrape_webpage` | `google_search`                                                                                                      | `SERPER_API_KEY`, `SERPER_BASE_URL`                                                        | [Details](#search_and_scrape_webpage)    |
-| **Information Retrieval**  | `jina_scrape_llm_summary`   | `scrape_and_extract_info`                                                                                            | `JINA_API_KEY`, `JINA_BASE_URL`, `SUMMARY_LLM_BASE_URL`, `SUMMARY_LLM_MODEL_NAME`, `SUMMARY_LLM_API_KEY` | [Details](#jina_scrape_llm_summary)      |
+| **Web Search**             | `tool-searxng-search`       | `searxng_search`                                                                                                     | None (local)                                                                              | [Details](#tool-searxng-search)          |
+| **Web Scraping**           | `tool-crawl4ai`             | `crawl_page`, `get_markdown`, `extract_links`, `extract_media`, `execute_js`                                         | None (local)                                                                              | [Details](#tool-crawl4ai)                |
 
 ### 🔧 Additional Available Tools
 
@@ -44,12 +42,10 @@ The following tools are implemented but were not used in the MiroThinker v1.0/v1
 |-----------------------------|----------------------|---------------------------------------------------|---------------------------------------------------------------------|--------------------------------|
 | **Web Searching**           | `tool-google-search` | `google_search`, `scrape_website`                 | `SERPER_API_KEY`, `SERPER_BASE_URL`, `JINA_API_KEY`, `JINA_BASE_URL` | [Details](#tool-google-search) |
 | **Web Searching (Sogou)**  | `tool-sogou-search` | `sogou_search`, `scrape_website`                 | `TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`, `JINA_API_KEY`, `JINA_BASE_URL` | [Details](#tool-sogou-search) |
-| **Vision Processing**       | `tool-vqa`           | `visual_question_answering`                       | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`                            | [Details](#tool-vqa)           |
 | **Vision Processing**       | `tool-vqa-os`        | `visual_question_answering`                       | `VISION_API_KEY`, `VISION_BASE_URL`, `VISION_MODEL_NAME`            | [Details](#tool-vqa-os)        |
 | **Audio Processing**        | `tool-transcribe`    | `audio_transcription`, `audio_question_answering` | `OPENAI_API_KEY`, `OPENAI_BASE_URL`                                  | [Details](#tool-transcribe)    |
 | **Audio Processing**        | `tool-transcribe-os` | `audio_transcription`                             | `WHISPER_API_KEY`, `WHISPER_BASE_URL`, `WHISPER_MODEL_NAME`         | [Details](#tool-transcribe-os) |
 | **Document Reading**        | `tool-reading`       | `convert_to_markdown`                             | None required                                                       | [Details](#tool-reading)       |
-| **Reasoning Engine**        | `tool-reasoning`     | `reasoning`                                       | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`                            | [Details](#tool-reasoning)     |
 | **Reasoning Engine**        | `tool-reasoning-os`  | `reasoning`                                       | `REASONING_API_KEY`, `REASONING_BASE_URL`, `REASONING_MODEL_NAME`   | [Details](#tool-reasoning-os)  |
 
 ## 🚀 Quick Start
@@ -66,11 +62,10 @@ async def main():
     # Initialize tool manager with server configurations
     server_configs = [
         {
-            "name": "tool-python",
+            "name": "microsandbox-docker",
             "params": StdioServerParameters(
                 command="python",
-                args=["-m", "miroflow_tools.mcp_servers.python_mcp_server"],
-                env={"E2B_API_KEY": "your_e2b_api_key"}  # Required for Python execution
+                args=["-m", "miroflow_tools.mcp_servers.microsandbox_docker_mcp_server"],
             )
         },
         # Add more server configurations...
@@ -81,21 +76,11 @@ async def main():
     # Get all available tool definitions
     tool_definitions = await tool_manager.get_all_tool_definitions()
 
-    # Create a sandbox first
-    sandbox_result = await tool_manager.execute_tool_call(
-        server_name="tool-python",
-        tool_name="create_sandbox",
-        arguments={"timeout": 600}
-    )
-
-    # Extract sandbox_id from result
-    sandbox_id = sandbox_result['result'].split('sandbox_id:')[-1].strip()
-
     # Execute a tool call
     result = await tool_manager.execute_tool_call(
-    server_name="tool-python",
-    tool_name="run_python_code",
-        arguments={"code_block": "print('Hello, World!')", "sandbox_id": sandbox_id}
+        server_name="microsandbox-docker",
+        tool_name="run_python_code",
+        arguments={"code": "print('Hello, World!')"}
     )
     print(result)
 
@@ -181,128 +166,7 @@ if __name__ == "__main__":
 
 ## 🔌 MCP Servers
 
-### Server: tool-python
 
-Execute Python code in isolated E2B sandboxes with persistent sessions.
-
-**Tools**:
-
-- 🔨 `create_sandbox(timeout=600)`: Create a new Linux sandbox
-- 🐍 `run_python_code(code_block, sandbox_id)`: Execute Python code
-- 💻 `run_command(command, sandbox_id)`: Run shell commands
-- ⬆️ `upload_file_from_local_to_sandbox(sandbox_id, local_file_path, sandbox_file_path)`: Upload files
-- ⬇️ `download_file_from_internet_to_sandbox(sandbox_id, url, sandbox_file_path)`: Download files
-- 💾 `download_file_from_sandbox_to_local(sandbox_id, sandbox_file_path, local_filename)`: Download files
-
-**Environment Variables**:
-
-- 🔑 `E2B_API_KEY`: E2B API key (required)
-- 📁 `LOGS_DIR`: Directory for temporary files (default: `../../logs`)
-
-**Example**:
-
-<details>
-<summary>Click to expand code example</summary>
-
-```python
-import asyncio
-from miroflow_tools import ToolManager
-from mcp import StdioServerParameters
-
-async def main():
-    # Configure server with environment variables
-    server_configs = [
-        {
-            "name": "tool-python",
-            "params": StdioServerParameters(
-                command="python",
-                args=["-m", "miroflow_tools.mcp_servers.python_mcp_server"],
-                env={"E2B_API_KEY": "your_e2b_api_key"}
-            )
-        }
-    ]
-
-    manager = ToolManager(server_configs)
-
-    # Create sandbox
-    result = await manager.execute_tool_call(
-        server_name="tool-python",
-        tool_name="create_sandbox",
-        arguments={"timeout": 600}
-    )
-
-    # Extract sandbox_id from result
-    sandbox_id = result['result'].split('sandbox_id:')[-1].strip()
-
-    # Run code
-    result = await manager.execute_tool_call(
-        server_name="tool-python",
-        tool_name="run_python_code",
-        arguments={"code_block": "import numpy as np; print(np.array([1,2,3]))", "sandbox_id": sandbox_id}
-    )
-    print(result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-</details>
-
-### Server: tool-vqa
-
-Analyze images and answer questions about visual content using Anthropic Claude.
-
-**Tools**:
-
-- 👁️ `visual_question_answering(image_path_or_url, question)`: Answer questions about images
-
-**Environment Variables**:
-
-- 🔑 `ANTHROPIC_API_KEY`: Anthropic API key (required)
-- 🌐 `ANTHROPIC_BASE_URL`: API base URL (default: `https://api.anthropic.com`)
-
-**Example**:
-
-<details>
-<summary>Click to expand code example</summary>
-
-```python
-import asyncio
-from miroflow_tools import ToolManager
-from mcp import StdioServerParameters
-
-async def main():
-    server_configs = [
-        {
-            "name": "tool-vqa",
-            "params": StdioServerParameters(
-                command="python",
-                args=["-m", "miroflow_tools.mcp_servers.vision_mcp_server"],
-                env={
-                    "ANTHROPIC_API_KEY": "your_anthropic_api_key",
-                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
-                }
-            )
-        }
-    ]
-
-    manager = ToolManager(server_configs)
-
-    result = await manager.execute_tool_call(
-        server_name="tool-vqa",
-        tool_name="visual_question_answering",
-        arguments={
-            "image_path_or_url": "https://example.com/image.jpg",
-            "question": "What is in this image?"
-        }
-    )
-    print(result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-</details>
 
 ### Server: tool-vqa-os
 
@@ -560,13 +424,13 @@ from mcp import StdioServerParameters
 async def main():
     server_configs = [
         {
-            "name": "tool-reasoning",
+            "name": "tool-reasoning-os",
             "params": StdioServerParameters(
                 command="python",
-                args=["-m", "miroflow_tools.mcp_servers.reasoning_mcp_server"],
+                args=["-m", "miroflow_tools.mcp_servers.reasoning_mcp_server_os"],
                 env={
-                    "ANTHROPIC_API_KEY": "your_anthropic_api_key",
-                    "ANTHROPIC_BASE_URL": "https://api.anthropic.com"
+                    "REASONING_BASE_URL": "http://localhost:8001/v1/chat/completions",
+                    "REASONING_MODEL_NAME": "qwen3.5"
                 }
             )
         }
@@ -575,7 +439,7 @@ async def main():
     manager = ToolManager(server_configs)
 
     result = await manager.execute_tool_call(
-        server_name="tool-reasoning",
+        server_name="tool-reasoning-os",
         tool_name="reasoning",
         arguments={"question": "Solve: If a train travels 60 mph for 2 hours, then 80 mph for 1 hour, what's the average speed?"}
     )
@@ -633,126 +497,6 @@ async def main():
         server_name="tool-reasoning-os",
         tool_name="reasoning",
         arguments={"question": "Solve: If a train travels 60 mph for 2 hours, then 80 mph for 1 hour, what's the average speed?"}
-    )
-    print(result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-</details>
-
-### Server: search_and_scrape_webpage
-
-Google search via Serper API. Used in MiroThinker v1.0/v1.5 evaluation.
-
-**Tools**:
-
-- 🔍 `google_search(q, gl="us", hl="en", location=None, num=None, tbs=None, page=None, autocorrect=None)`: Perform web searches via Serper API and retrieve rich results
-
-**Environment Variables**:
-
-- 🔑 `SERPER_API_KEY`: Serper API key (required)
-- 🌐 `SERPER_BASE_URL`: Serper API base URL (default: `https://google.serper.dev`)
-
-**Example**:
-
-<details>
-<summary>Click to expand code example</summary>
-
-```python
-import asyncio
-from miroflow_tools import ToolManager
-from mcp import StdioServerParameters
-
-async def main():
-    server_configs = [
-        {
-            "name": "search_and_scrape_webpage",
-            "params": StdioServerParameters(
-                command="python",
-                args=["-m", "miroflow_tools.dev_mcp_servers.search_and_scrape_webpage"],
-                env={
-                    "SERPER_API_KEY": "your_serper_api_key",
-                    "SERPER_BASE_URL": "https://google.serper.dev"
-                }
-            )
-        }
-    ]
-
-    manager = ToolManager(server_configs)
-
-    result = await manager.execute_tool_call(
-        server_name="search_and_scrape_webpage",
-        tool_name="google_search",
-        arguments={
-            "q": "Python async programming",
-            "gl": "us",
-            "hl": "en",
-            "num": 10
-        }
-    )
-    print(result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-</details>
-
-### Server: jina_scrape_llm_summary
-
-Scrape content from URLs and extract meaningful information using an LLM. Used in MiroThinker v1.0/v1.5 evaluation.
-
-**Tools**:
-
-- 🔎 `scrape_and_extract_info(url, info_to_extract, custom_headers=None)`: Scrape content from a URL (web pages, PDFs, code files, etc.) and extract meaningful information using an LLM
-
-**Environment Variables**:
-
-- 🔑 `JINA_API_KEY`: Jina.ai API key (required)
-- 🌐 `JINA_BASE_URL`: Jina.ai API base URL (default: `https://r.jina.ai`)
-- 🔗 `SUMMARY_LLM_BASE_URL`: LLM API base URL for summarization (required)
-- 🤖 `SUMMARY_LLM_MODEL_NAME`: LLM model name for summarization (required)
-- 🔑 `SUMMARY_LLM_API_KEY`: LLM API key for summarization (optional, depends on LLM provider)
-
-**Example**:
-
-<details>
-<summary>Click to expand code example</summary>
-
-```python
-import asyncio
-from miroflow_tools import ToolManager
-from mcp import StdioServerParameters
-
-async def main():
-    server_configs = [
-        {
-            "name": "jina_scrape_llm_summary",
-            "params": StdioServerParameters(
-                command="python",
-                args=["-m", "miroflow_tools.dev_mcp_servers.jina_scrape_llm_summary"],
-                env={
-                    "JINA_API_KEY": "your_jina_api_key",
-                    "JINA_BASE_URL": "https://r.jina.ai",
-                    "SUMMARY_LLM_BASE_URL": "your_llm_base_url",
-                    "SUMMARY_LLM_MODEL_NAME": "your_llm_model_name",
-                    "SUMMARY_LLM_API_KEY": "your_llm_api_key"
-                }
-            )
-        }
-    ]
-
-    manager = ToolManager(server_configs)
-
-    result = await manager.execute_tool_call(
-        server_name="jina_scrape_llm_summary",
-        tool_name="scrape_and_extract_info",
-        arguments={
-            "url": "https://example.com/article",
-            "info_to_extract": "What is the main topic of this article?"
-        }
     )
     print(result)
 

@@ -1,7 +1,9 @@
 // Lightweight markdown-to-HTML renderer for MiroThinker output
 // Supports: headings, bold, italic, strikethrough, inline code, links, images,
 // ordered/unordered lists, tables (with alignment), code blocks, blockquotes,
-// horizontal rules, bold+italic
+// horizontal rules, bold+italic, LaTeX math (inline $...$ and display $$...$$)
+
+import katex from 'katex';
 
 function escapeHtml(text: string): string {
   return text
@@ -11,8 +13,45 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function renderDisplayMath(math: string): string {
+  try {
+    return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
+  } catch {
+    return `<pre class="bg-background p-4 rounded-lg mb-3 overflow-x-auto border border-border text-text-secondary">${escapeHtml('$$' + math + '$$')}</pre>`;
+  }
+}
+
+function renderInlineMath(math: string): string {
+  try {
+    return katex.renderToString(math.trim(), { displayMode: false, throwOnError: false });
+  } catch {
+    return `<code class="bg-background px-1.5 py-0.5 rounded text-sm text-accent">${escapeHtml('$' + math + '$')}</code>`;
+  }
+}
+
+function looksLikePrice(text: string): boolean {
+  return /^\s*\d+([.,]\d{0,2})?\s*$/.test(text);
+}
+
 function processInline(text: string): string {
-  return text
+  // Handle inline display math ($$...$$) first
+  text = text.replace(/\$\$([^\$]+?)\$\$/g, (match, math) => {
+    try {
+      return katex.renderToString(math.trim(), { displayMode: true, throwOnError: false });
+    } catch {
+      return `<code>${escapeHtml(match)}</code>`;
+    }
+  });
+
+  // Extract inline math (using null char as safe delimiter)
+  const inlineMath: string[] = [];
+  text = text.replace(/(?<!\$)\$([^\$\n]+?)\$(?!\$)/g, (match, math) => {
+    if (looksLikePrice(math)) return match;
+    inlineMath.push(math.trim());
+    return `\x00MATH_${inlineMath.length - 1}\x00`;
+  });
+
+  text = text
     // Bold+italic (must come before bold-only)
     .replace(/\*\*\*(.+?)\*\*\*/g, '<strong class="text-text-primary"><em>$1</em></strong>')
     // Bold
@@ -27,6 +66,13 @@ function processInline(text: string): string {
     .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1" class="max-w-full h-auto rounded-lg my-2" loading="lazy" />')
     // Links
     .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">$1</a>');
+
+  // Restore inline math
+  inlineMath.forEach((math, i) => {
+    text = text.replace(`\x00MATH_${i}\x00`, renderInlineMath(math));
+  });
+
+  return text;
 }
 
 export function simpleMarkdownToHtml(text: string): string {
@@ -54,6 +100,8 @@ export function simpleMarkdownToHtml(text: string): string {
   let inCodeBlock = false;
   let codeContent = '';
   let codeLang = '';
+  let inDisplayMath = false;
+  let displayMathContent = '';
   let listItems: string[] = [];
   let listTag: string | null = null;
   let listStart: number | undefined;
@@ -137,6 +185,36 @@ export function simpleMarkdownToHtml(text: string): string {
 
     if (inCodeBlock) {
       codeContent += line + '\n';
+      continue;
+    }
+
+    // Display math blocks ($$...$$)
+    const displayMathMatch = line.match(/^\s*\$\$(.*)$/);
+    if (displayMathMatch) {
+      flushParagraph();
+      flushListAndTable();
+      if (!inDisplayMath) {
+        inDisplayMath = true;
+        displayMathContent = displayMathMatch[1];
+        // Single-line display math: $$...$$
+        if (displayMathContent.endsWith('$$')) {
+          displayMathContent = displayMathContent.slice(0, -2);
+          blocks.push(renderDisplayMath(displayMathContent));
+          inDisplayMath = false;
+          displayMathContent = '';
+        }
+      } else {
+        // Closing line of multi-line display math
+        displayMathContent += '\n' + displayMathMatch[1];
+        blocks.push(renderDisplayMath(displayMathContent));
+        inDisplayMath = false;
+        displayMathContent = '';
+      }
+      continue;
+    }
+
+    if (inDisplayMath) {
+      displayMathContent += line + '\n';
       continue;
     }
 

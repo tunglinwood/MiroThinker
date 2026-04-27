@@ -31,7 +31,7 @@ mcp = FastMCP("searxng-mcp-server")
         (requests.ConnectionError, requests.Timeout, requests.HTTPError)
     ),
 )
-def make_searxng_request(query: str, num_results: int = 15) -> requests.Response:
+def make_searxng_request(query: str, num_results: int = 20) -> requests.Response:
     """Make HTTP request to SearXNG API."""
     # SearXNG API endpoint
     url = f"{SEARXNG_BASE_URL}/search"
@@ -39,7 +39,7 @@ def make_searxng_request(query: str, num_results: int = 15) -> requests.Response
     params = {
         "q": query,
         "format": "json",
-        "engines": "bing",
+        "engines": "startpage",
         "language": "en",
         "num_results": num_results,
     }
@@ -52,7 +52,7 @@ def make_searxng_request(query: str, num_results: int = 15) -> requests.Response
 @mcp.tool()
 def searxng_search(
     q: str,
-    num: int = 15,
+    num: int = 20,
     language: str = "en",
     category: str = "general",
 ) -> str:
@@ -67,7 +67,7 @@ def searxng_search(
 
     Args:
         q: Search query string (required)
-        num: Number of results to return (default: 15)
+        num: Number of results to return (default: 20)
         language: Language code for search results (default: 'en')
         category: Search category - 'general' or 'science' (default: 'general')
 
@@ -89,12 +89,15 @@ def searxng_search(
         # Make the API request
         url = f"{SEARXNG_BASE_URL}/search"
 
-        # Choose engines based on category — Bing is the most reliable engine
-        # Brave is often rate-limited, DuckDuckGo frequently times out
+        # Choose engines based on category
+        # Startpage (Google proxy) provides far better quality for brand-name queries.
+        # Bing matches "Intel" to driver downloads and marketing pages instead of
+        # financial analysis. Yacy results are low-relevance, Brave is rate-limited,
+        # DDG is CAPTCHA-blocked.
         if category == "science":
             engines = "pubmed,google scholar,semantic scholar,crossref,arxiv"
         else:
-            engines = "bing"
+            engines = "startpage"
 
         params = {
             "q": q.strip(),

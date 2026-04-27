@@ -27,13 +27,19 @@ async def enter_app(request: AuthEnterRequest) -> TokenResponse:
     chosen freely by each user.
     """
     shared_password = os.getenv("SHARED_ACCESS_PASSWORD", "")
+    admin_password = os.getenv("ADMIN_PASSWORD", "")
 
-    # If no password is configured, allow any non-empty password (first-run)
-    if shared_password and request.password != shared_password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect access password",
-        )
+    # Check admin password first — admins can use either password
+    is_admin = bool(admin_password and request.password == admin_password)
+
+    # If not admin, check shared password
+    if not is_admin:
+        # If no password is configured, allow any non-empty password (first-run)
+        if shared_password and request.password != shared_password:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect access password",
+            )
 
     if not request.username.strip():
         raise HTTPException(
@@ -51,15 +57,18 @@ async def enter_app(request: AuthEnterRequest) -> TokenResponse:
 
     # Create JWT token
     expire = datetime.now(timezone.utc) + timedelta(days=TOKEN_EXPIRE_DAYS)
+
     payload = {
         "username": username,
         "sub": username,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
+        "role": "admin" if is_admin else "user",
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
     return TokenResponse(
         access_token=token,
         username=username,
+        role="admin" if is_admin else "user",
     )

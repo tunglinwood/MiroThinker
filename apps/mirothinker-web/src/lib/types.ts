@@ -165,3 +165,40 @@ export interface PythonExecutionResult {
   error?: string;
   charts?: string[];
 }
+
+// Admin dashboard types
+export interface ServiceStatus {
+  status: string;
+  response_time_ms?: number;
+  url?: string;
+  details?: string;
+}
+
+export interface AdminHealthResponse {
+  status: string;
+  version: string;
+  services: Record<string, ServiceStatus>;
+  active_tasks: number;
+  total_users: number;
+  uptime_seconds: number;
+}
+
+export interface AdminUser {
+  username: string;
+  total_tasks: number;
+  active_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  last_active: string;
+}
+
+export interface AdminUsersResponse {
+  users: AdminUser[];
+}
+
+export interface AdminTaskListResponse {
+  tasks: Task[];
+  total: number;
+  page: number;
+  page_size: number;
+}

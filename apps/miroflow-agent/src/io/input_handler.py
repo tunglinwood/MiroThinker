@@ -32,6 +32,7 @@ from typing import Any, Tuple, Union
 from urllib.parse import quote, unquote, urlparse, urlunparse
 
 import mammoth
+import requests
 import markdownify
 import openpyxl
 import pdfminer
@@ -46,6 +47,11 @@ from openpyxl.utils import get_column_letter
 # Ensure .env file is loaded
 load_dotenv()
 
+# Local vision endpoint (same as tool-vqa-os)
+VISION_API_KEY = os.environ.get("VISION_API_KEY", "not-needed")
+VISION_BASE_URL = os.environ.get("VISION_BASE_URL", "http://localhost:8001/v1/chat/completions")
+VISION_MODEL_NAME = os.environ.get("VISION_MODEL_NAME", "qwen3.5")
+
 # File extension constants for different media types
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
 AUDIO_EXTENSIONS = {"wav", "mp3", "m4a"}
@@ -57,7 +63,7 @@ SKIP_MARKITDOWN_EXTENSIONS = MEDIA_EXTENSIONS | {"pdb"}
 
 def _generate_image_caption(image_path: str) -> str:
     """
-    Generate a caption for an image using OpenAI's GPT-4o vision model.
+    Generate a caption for an image using the local vision LLM (qwen3.5).
 
     Args:
         image_path: Path to the image file
@@ -66,14 +72,6 @@ def _generate_image_caption(image_path: str) -> str:
         Caption string, or error message if failed
     """
     try:
-        OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-        OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-        if not OPENAI_API_KEY:
-            return "[Caption unavailable: OPENAI_API_KEY not set]"
-
-        client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-
         # Read and encode image
         with open(image_path, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
@@ -89,10 +87,9 @@ def _generate_image_caption(image_path: str) -> str:
             ".webp": "image/webp",
         }.get(ext, "image/jpeg")
 
-        # Call OpenAI API
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
+        payload = {
+            "model": VISION_MODEL_NAME,
+            "messages": [
                 {
                     "role": "user",
                     "content": [
@@ -109,11 +106,18 @@ def _generate_image_caption(image_path: str) -> str:
                     ],
                 }
             ],
-            max_tokens=2048,
-            temperature=0,
-        )
+            "max_tokens": 2048,
+            "temperature": 0,
+        }
 
-        content = response.choices[0].message.content
+        headers = {
+            "Authorization": f"Bearer {VISION_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(VISION_BASE_URL, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
         return content if content else "[Caption unavailable: Empty response]"
 
     except Exception as e:
@@ -154,7 +158,7 @@ def _generate_audio_caption(audio_path: str) -> str:
 
 def _generate_video_caption(video_path: str) -> str:
     """
-    Generate a caption for a video using OpenAI's GPT-4o vision model.
+    Generate a caption for a video using the local vision LLM (qwen3.5).
 
     Args:
         video_path: Path to the video file
@@ -163,14 +167,6 @@ def _generate_video_caption(video_path: str) -> str:
         Caption string, or error message if failed
     """
     try:
-        OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-        OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-        if not OPENAI_API_KEY:
-            return "[Caption unavailable: OPENAI_API_KEY not set]"
-
-        client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-
         # Read and encode video
         with open(video_path, "rb") as video_file:
             video_data = base64.b64encode(video_file.read()).decode("utf-8")
@@ -186,10 +182,9 @@ def _generate_video_caption(video_path: str) -> str:
             ".webm": "video/webm",
         }.get(ext, "video/mp4")
 
-        # Call OpenAI API
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
+        payload = {
+            "model": VISION_MODEL_NAME,
+            "messages": [
                 {
                     "role": "user",
                     "content": [
@@ -206,11 +201,18 @@ def _generate_video_caption(video_path: str) -> str:
                     ],
                 }
             ],
-            max_tokens=2048,
-            temperature=0,
-        )
+            "max_tokens": 2048,
+            "temperature": 0,
+        }
 
-        content = response.choices[0].message.content
+        headers = {
+            "Authorization": f"Bearer {VISION_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(VISION_BASE_URL, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
         return content if content else "[Caption unavailable: Empty response]"
 
     except Exception as e:
@@ -231,14 +233,6 @@ def _extract_task_relevant_info_from_image(
         Extracted relevant information, or empty string if extraction fails
     """
     try:
-        OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-        OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-        if not OPENAI_API_KEY:
-            return ""
-
-        client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-
         # Read and encode image
         with open(image_path, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
@@ -254,10 +248,9 @@ def _extract_task_relevant_info_from_image(
             ".webp": "image/webp",
         }.get(ext, "image/jpeg")
 
-        # Call OpenAI API with task-specific prompt
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
+        payload = {
+            "model": VISION_MODEL_NAME,
+            "messages": [
                 {
                     "role": "user",
                     "content": [
@@ -278,11 +271,18 @@ Please provide a concise summary of the relevant information from the image that
                     ],
                 }
             ],
-            max_tokens=1024,
-            temperature=0,
-        )
+            "max_tokens": 1024,
+            "temperature": 0,
+        }
 
-        return response.choices[0].message.content.strip()
+        headers = {
+            "Authorization": f"Bearer {VISION_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(VISION_BASE_URL, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
 
     except Exception as e:
         print(f"Warning: Failed to extract task-relevant info from image: {str(e)}")
@@ -377,14 +377,6 @@ def _extract_task_relevant_info_from_video(
         Extracted relevant information, or empty string if extraction fails
     """
     try:
-        OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-        OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-
-        if not OPENAI_API_KEY:
-            return ""
-
-        client = OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-
         # Read and encode video
         with open(video_path, "rb") as video_file:
             video_data = base64.b64encode(video_file.read()).decode("utf-8")
@@ -400,10 +392,9 @@ def _extract_task_relevant_info_from_video(
             ".webm": "video/webm",
         }.get(ext, "video/mp4")
 
-        # Call OpenAI API with task-specific prompt
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
+        payload = {
+            "model": VISION_MODEL_NAME,
+            "messages": [
                 {
                     "role": "user",
                     "content": [
@@ -424,11 +415,18 @@ Please provide a concise summary of the relevant information from the video that
                     ],
                 }
             ],
-            max_tokens=1024,
-            temperature=0,
-        )
+            "max_tokens": 1024,
+            "temperature": 0,
+        }
 
-        return response.choices[0].message.content.strip()
+        headers = {
+            "Authorization": f"Bearer {VISION_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+        response = requests.post(VISION_BASE_URL, json=payload, headers=headers, timeout=120)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
 
     except Exception as e:
         print(f"Warning: Failed to extract task-relevant info from video: {str(e)}")

@@ -70,7 +70,7 @@ services:
       dockerfile: Dockerfile
     container_name: mirothinker-web
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       - API_INTERNAL_URL=http://miroflow-api:8002
     depends_on:

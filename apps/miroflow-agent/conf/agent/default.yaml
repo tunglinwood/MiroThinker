@@ -9,7 +9,7 @@ main_agent:
     - tool-vqa-os                # Local vision LLM (qwen3.5 at http://localhost:8001/v1)
     - tool-reasoning-os          # Local reasoning model (qwen3.5)
   tool_blacklist:
-    - [ "tool-searxng-search", "sogou_search" ]
+    []
   max_turns: 200
 
 sub_agents:

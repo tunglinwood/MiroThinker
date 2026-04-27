@@ -23,6 +23,8 @@ class TaskManager:
         self._lock = threading.RLock()
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        self._state_file = self._log_dir.parent / "task_state.json"
+        self._load_state()
 
     def create_task(
         self,
@@ -58,6 +60,7 @@ class TaskManager:
             if user_id:
                 # Store user ownership metadata
                 task._user_id = user_id  # type: ignore[attr-defined]
+            self._save_state()
 
         return task
 
@@ -93,6 +96,7 @@ class TaskManager:
             task.updated_at = datetime.now()
 
             self._tasks[task_id] = task
+            self._save_state()
             return task
 
     def set_status(self, task_id: str, status: TaskStatus, user_id: Optional[str] = None) -> Optional[TaskResponse]:
@@ -144,6 +148,7 @@ class TaskManager:
                     if owner is not None and owner != user_id:
                         return False
                 del self._tasks[task_id]
+                self._save_state()
                 return True
             return False
 
@@ -151,6 +156,63 @@ class TaskManager:
         """Get all task IDs."""
         with self._lock:
             return list(self._tasks.keys())
+
+    def list_all_tasks(
+        self,
+        page: int = 1,
+        page_size: int = 100,
+        status_filter: Optional[TaskStatus] = None,
+        user_id: Optional[str] = None,
+    ) -> tuple[List[TaskResponse], int]:
+        """List ALL tasks without user scoping (admin only). Optional user/status filter."""
+        with self._lock:
+            tasks = list(self._tasks.values())
+
+            # Filter by user if specified (admin filtering by specific user)
+            if user_id is not None:
+                tasks = [t for t in tasks if getattr(t, "_user_id", None) == user_id]
+
+            # Filter by status if specified
+            if status_filter:
+                tasks = [t for t in tasks if t.status == status_filter]
+
+            # Sort by created_at descending (newest first)
+            tasks.sort(key=lambda t: t.created_at, reverse=True)
+
+            total = len(tasks)
+            start = (page - 1) * page_size
+            end = start + page_size
+            tasks = tasks[start:end]
+
+            return tasks, total
+
+    def get_users(self) -> List[Dict[str, Any]]:
+        """Get all unique users with task statistics."""
+        with self._lock:
+            user_stats: Dict[str, Dict[str, Any]] = {}
+            for task in self._tasks.values():
+                uid = getattr(task, "_user_id", None) or "anonymous"
+                if uid not in user_stats:
+                    user_stats[uid] = {
+                        "username": uid,
+                        "total_tasks": 0,
+                        "active_tasks": 0,
+                        "completed_tasks": 0,
+                        "failed_tasks": 0,
+                        "last_active": task.created_at.isoformat(),
+                    }
+                stats = user_stats[uid]
+                stats["total_tasks"] += 1
+                if task.status in ("pending", "running"):
+                    stats["active_tasks"] += 1
+                elif task.status == "completed":
+                    stats["completed_tasks"] += 1
+                elif task.status in ("failed", "cancelled"):
+                    stats["failed_tasks"] += 1
+                if task.updated_at.isoformat() > stats["last_active"]:
+                    stats["last_active"] = task.updated_at.isoformat()
+
+            return sorted(user_stats.values(), key=lambda u: u["last_active"], reverse=True)
 
     def find_log_file(self, task_id: str, user_id: Optional[str] = None) -> Optional[Path]:
         """Find the log file for a task."""
@@ -237,6 +299,43 @@ class TaskManager:
             "recent_logs": recent_logs,
             "messages": messages,
         }
+
+    def _save_state(self) -> None:
+        """Persist current task state to disk."""
+        try:
+            data: Dict[str, Any] = {}
+            for tid, task in self._tasks.items():
+                entry = task.model_dump(mode="json")
+                user_id = getattr(task, "_user_id", None)
+                if user_id is not None:
+                    entry["user_id"] = user_id
+                data[tid] = entry
+            tmp_file = self._state_file.with_suffix(".tmp")
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            tmp_file.replace(self._state_file)
+        except Exception:
+            pass  # Best-effort persistence; never crash the API on write failure
+
+    def _load_state(self) -> None:
+        """Restore task state from disk on startup."""
+        if not self._state_file.exists():
+            return
+        try:
+            with open(self._state_file, "r", encoding="utf-8") as f:
+                data: Dict[str, Any] = json.load(f)
+            for tid, entry in data.items():
+                user_id = entry.pop("user_id", None)
+                # Mark running tasks as failed since their asyncio tasks died
+                if entry.get("status") == "running":
+                    entry["status"] = "failed"
+                    entry["error_message"] = entry.get("error_message", "") or "Task interrupted by server restart"
+                task = TaskResponse.model_validate(entry)
+                if user_id is not None:
+                    task._user_id = user_id  # type: ignore[attr-defined]
+                self._tasks[tid] = task
+        except Exception:
+            pass  # Start fresh if state file is corrupted
 
     def get_final_result_from_log(self, task_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Extract final result from log file."""

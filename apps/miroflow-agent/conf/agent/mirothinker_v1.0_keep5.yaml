@@ -11,7 +11,7 @@ main_agent:
     - tool-crawl4ai
     - microsandbox-docker      # Local Docker code execution (no API key)
   tool_blacklist:
-    - [ "tool-searxng-search", "sogou_search" ]
+    []
   max_turns: 600  # Maximum number of turns for main agent execution
 
 sub_agents:

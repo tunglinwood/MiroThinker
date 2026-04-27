@@ -129,3 +129,11 @@ body {
 .markdown-content table { @apply w-full border-collapse mb-4; }
 .markdown-content th { @apply bg-surface border border-border px-3 py-2 text-left text-text-primary; }
 .markdown-content td { @apply border border-border px-3 py-2 text-text-secondary; }
+
+/* KaTeX math styling for dark/light themes */
+.katex { font-size: 1.1em; }
+.katex-display { overflow-x: auto; padding: 0.5rem 0; }
+.dark .katex { color: var(--color-text-primary); }
+.dark .katex .mord, .dark .katex .mop, .dark .katex .mrel, .dark .katex .mbin { color: var(--color-text-primary); }
+.light .katex { color: var(--color-text-primary); }
+.light .katex .mord, .light .katex .mop, .light .katex .mrel, .light .katex .mbin { color: var(--color-text-primary); }

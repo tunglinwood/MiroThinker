@@ -12,13 +12,19 @@ main_agent:
     - microsandbox-docker        # Docker-based Python sandbox (no API key)
     - tool-vqa-os                # Local vision LLM (qwen3.5 at http://localhost:8001/v1)
     - tool-reasoning-os          # Local reasoning model (qwen3.5)
-  tool_blacklist:
-    - [ "tool-searxng-search", "sogou_search" ]
-  max_turns: 200
+  tool_blacklist: []
+  max_turns: 600
 
 sub_agents:
+  agent-browsing:
+    tools:
+      - tool-searxng-search
+      - tool-crawl4ai
+      - tool-vqa-os
+      - microsandbox-docker
+    max_turns: 200
 
 # Context management
-keep_tool_result: 5
+keep_tool_result: -1
 context_compress_limit: 5
 retry_with_summary: False
