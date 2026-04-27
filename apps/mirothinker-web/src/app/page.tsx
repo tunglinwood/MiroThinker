@@ -15,6 +15,7 @@ import { TaskOverview } from '@/components/task-overview';
 import { ActivityLog } from '@/components/activity-log';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { SubAgentPanel } from '@/components/sub-agent-panel';
 import { Bot, PanelLeftClose, PanelLeft, Square, LogOut, Shield } from 'lucide-react';
 
 export default function Home() {
@@ -76,7 +77,7 @@ export default function Home() {
   );
 
   // SSE for real-time streaming
-  const { data: sseData, connected: sseConnected, toolCalls: sseToolCalls } = useSSE({
+  const { data: sseData, connected: sseConnected, toolCalls: sseToolCalls, subAgents } = useSSE({
     taskId: isActive(selectedTask) ? selectedTask!.id : null,
     enabled: isActive(selectedTask),
     onComplete: handleSSEComplete,
@@ -292,6 +293,9 @@ export default function Home() {
         taskList={taskList}
       />
 
+      {/* Sub-Agent Side Panel */}
+      <SubAgentPanel subAgents={subAgents} />
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
@@ -390,6 +394,7 @@ export default function Home() {
                 turns={turnData}
                 stepCount={currentStatus?.step_count || 0}
                 liveToolCalls={sseToolCalls}
+                subAgents={subAgents}
               />
 
               {/* Activity Log */}

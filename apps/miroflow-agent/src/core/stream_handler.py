@@ -234,3 +234,47 @@ class StreamHandler:
             )
 
         return tool_call_id
+
+    async def start_sub_agent(
+        self, sub_agent_name: str, task_description: str, parent_agent_id: str
+    ) -> str:
+        """
+        Send start_of_sub_agent event.
+
+        Args:
+            sub_agent_name: Name of the sub-agent (e.g., 'agent-browsing')
+            task_description: The subtask description given to the sub-agent
+            parent_agent_id: ID of the parent (main) agent
+
+        Returns:
+            The generated sub-agent ID
+        """
+        sub_agent_id = str(uuid.uuid4())
+        await self.update(
+            "start_of_sub_agent",
+            {
+                "sub_agent_name": sub_agent_name,
+                "task_description": task_description,
+                "sub_agent_id": sub_agent_id,
+                "parent_agent_id": parent_agent_id,
+            },
+        )
+        return sub_agent_id
+
+    async def end_sub_agent(self, sub_agent_name: str, sub_agent_id: str, result: str):
+        """
+        Send end_of_sub_agent event.
+
+        Args:
+            sub_agent_name: Name of the sub-agent
+            sub_agent_id: The sub-agent ID
+            result: The final result text from the sub-agent
+        """
+        await self.update(
+            "end_of_sub_agent",
+            {
+                "sub_agent_name": sub_agent_name,
+                "sub_agent_id": sub_agent_id,
+                "result": result[:2000] if result else "",
+            },
+        )

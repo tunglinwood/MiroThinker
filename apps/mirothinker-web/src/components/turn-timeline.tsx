@@ -8,14 +8,16 @@ import {
   Loader2,
   Hash,
   Cpu,
+  Bot,
 } from 'lucide-react';
-import type { Message, SseToolCall, ToolCallTelemetry } from '@/lib/types';
+import type { Message, SseToolCall, ToolCallTelemetry, SubAgentState } from '@/lib/types';
 import { parseMessageContent } from '@/lib/parser';
 import { simpleMarkdownToHtml } from '@/lib/markdown';
 import { SearchResultsView } from './search-results-view';
 import { PythonCodeOutput } from './python-code-output';
 import { IntermediateSteps } from './intermediate-steps';
 import { ToolCallCard } from './tool-call-card';
+import { ToolRenderer } from './tool-renderer';
 
 interface TurnData {
   turn: number;
@@ -33,6 +35,7 @@ interface TurnTimelineProps {
   turns: TurnData[];
   stepCount: number;
   liveToolCalls?: SseToolCall[];
+  subAgents?: SubAgentState[];
 }
 
 function formatTokens(n: number): string {
@@ -168,7 +171,7 @@ function renderToolCall(tc: SseToolCall) {
   );
 }
 
-export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls }: TurnTimelineProps) {
+export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls, subAgents = [] }: TurnTimelineProps) {
   const [expandedTurns, setExpandedTurns] = useState<Set<number>>(new Set());
 
   const toggleTurn = (turn: number) => {
@@ -218,6 +221,17 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
     return steps;
   }, [liveToolCalls]);
 
+  // Group sub-agents by dispatch turn for trace display
+  const subAgentsByTurn = useMemo(() => {
+    const grouped = new Map<number, SubAgentState[]>();
+    for (const sa of subAgents) {
+      // Sub-agents don't have a direct turn number, so we show them in a separate section
+      if (!grouped.has(0)) grouped.set(0, []);
+      grouped.get(0)!.push(sa);
+    }
+    return grouped;
+  }, [subAgents]);
+
   if (messages.length === 0 && turns.length === 0 && !liveToolCalls?.length) {
     return (
       <div className="flex items-center justify-center gap-3 py-8 text-text-muted">
@@ -234,6 +248,20 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
         <IntermediateSteps steps={intermediateSteps} status={status} />
       )}
 
+      {/* Sub-agent dispatch trace */}
+      {subAgents.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-text-secondary">
+            <Bot className="w-4 h-4 text-purple-400" />
+            <span>Sub-agent dispatch</span>
+            <span className="text-xs text-text-muted">({subAgents.length} dispatch{subAgents.length !== 1 ? 'es' : ''})</span>
+          </div>
+          {subAgents.map((sa) => (
+            <SubAgentDispatchCard key={sa.id} subAgent={sa} />
+          ))}
+        </div>
+      )}
+
       {/* Summary bar */}
       {turns.length > 0 && (
         <div className="flex items-center justify-center gap-2 text-xs text-text-muted">
@@ -248,7 +276,9 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
       {/* Live tool calls (not yet grouped into turns from telemetry) */}
       {liveToolCalls && liveToolCalls.length > 0 && turns.length === 0 && (
         <div className="space-y-4">
-          {liveToolCalls.map((tc) => renderToolCall(tc))}
+          {liveToolCalls.map((tc) => (
+            <ToolRenderer key={tc.tool_call_id} toolCall={tc} />
+          ))}
         </div>
       )}
 
@@ -348,7 +378,9 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
                 })}
 
                 {/* Live tool calls for this turn */}
-                {liveToolsForTurn.map((tc) => renderToolCall(tc))}
+                {liveToolsForTurn.map((tc) => (
+                  <ToolRenderer key={tc.tool_call_id} toolCall={tc} />
+                ))}
 
                 {/* Telemetry tool calls — use ToolCallCard for full result display */}
                 {turn.toolCalls.map((tc, tcIdx) => (
@@ -385,3 +417,56 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
   );
 }
 
+/** Card showing a sub-agent dispatch — task, status, and result preview */
+function SubAgentDispatchCard({ subAgent }: { subAgent: SubAgentState }) {
+  const isRunning = subAgent.status === 'running';
+  const isCompleted = subAgent.status === 'completed';
+
+  return (
+    <div className="bg-surface border border-purple-400/20 rounded-xl p-3 space-y-2">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-full bg-purple-400/10 border border-purple-400/20 flex items-center justify-center">
+          <Bot className="w-3 h-3 text-purple-400" />
+        </div>
+        <span className="text-xs font-semibold text-purple-400">{subAgent.name}</span>
+        {isRunning && (
+          <span className="flex items-center gap-1 text-[10px] text-text-muted">
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+            Running &middot; {subAgent.stepCount} steps
+          </span>
+        )}
+        {isCompleted && (
+          <span className="text-[10px] text-green-400">
+            Completed &middot; {subAgent.stepCount} steps
+          </span>
+        )}
+      </div>
+
+      {/* Task description */}
+      <div>
+        <p className="text-[10px] font-medium text-text-muted mb-0.5">Task</p>
+        <p className="text-xs text-text-secondary leading-relaxed line-clamp-3">
+          {subAgent.taskDescription}
+        </p>
+      </div>
+
+      {/* Result */}
+      {isCompleted && subAgent.result && (
+        <div>
+          <p className="text-[10px] font-medium text-green-400 mb-0.5">Result</p>
+          <pre className="text-xs text-text-muted whitespace-pre-wrap leading-relaxed line-clamp-5 overflow-x-auto">
+            {subAgent.result.length > 800 ? `${subAgent.result.slice(0, 800)}...` : subAgent.result}
+          </pre>
+        </div>
+      )}
+
+      {/* Tool count */}
+      {subAgent.toolCalls.length > 0 && (
+        <p className="text-[10px] text-text-muted">
+          Used {subAgent.toolCalls.length} tool{subAgent.toolCalls.length !== 1 ? 's' : ''} across {subAgent.currentTurn} turn{subAgent.currentTurn !== 1 ? 's' : ''}
+        </p>
+      )}
+    </div>
+  );
+}

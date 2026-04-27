@@ -347,8 +347,10 @@ class Orchestrator:
         )
 
         # Stream sub-agent start
+        sub_agent_id = await self.stream.start_sub_agent(
+            sub_agent_name, task_description, self.current_agent_id
+        )
         display_name = sub_agent_name.replace("agent-", "")
-        sub_agent_id = await self.stream.start_agent(display_name)
         await self.stream.start_llm(display_name)
 
         # Start new sub-agent session
@@ -731,6 +733,7 @@ class Orchestrator:
         # Stream sub-agent end
         await self.stream.end_llm(display_name)
         await self.stream.end_agent(display_name, sub_agent_id)
+        await self.stream.end_sub_agent(sub_agent_name, sub_agent_id, final_answer_text)
 
         return final_answer_text
 
@@ -903,11 +906,16 @@ class Orchestrator:
                         )
                     break
 
-            # Execute tool calls
+            # Execute tool calls — parallel sub-agent dispatch
             tool_calls_data = []
             all_tool_results_content_with_id = []
             should_rollback_turn = False
             main_agent_last_call_tokens = self.llm_client.last_call_tokens
+
+            # First pass: classify tool calls into sub-agent vs regular
+            sub_agent_calls = []
+            regular_tool_calls = []
+            seen_sub_agent_keys = set()
 
             for call in tool_calls:
                 server_name = call["server_name"]
@@ -915,181 +923,191 @@ class Orchestrator:
                 arguments = call["arguments"]
                 call_id = call["id"]
 
-                # Fix common parameter name mistakes
+                if server_name.startswith("agent-") and self.cfg.agent.sub_agents:
+                    dedup_key = f"{server_name}:{tool_name}:{arguments.get('subtask', '')}"
+                    if dedup_key in seen_sub_agent_keys:
+                        continue
+                    seen_sub_agent_keys.add(dedup_key)
+                    sub_agent_calls.append(call)
+                else:
+                    regular_tool_calls.append(call)
+
+            # Second pass: run all sub-agents in parallel
+            sub_agent_results = []
+            if sub_agent_calls:
+                # End main agent stream temporarily
+                await self.stream.end_llm("main")
+                await self.stream.end_agent("main", self.current_agent_id)
+
+                async def run_sub(call):
+                    cache_name = "main_" + call["tool_name"]
+                    (
+                        is_dup,
+                        should_rb,
+                        new_turn,
+                        new_rb,
+                        new_hist,
+                    ) = await self._check_duplicate_query(
+                        call["tool_name"],
+                        call["arguments"],
+                        cache_name,
+                        consecutive_rollbacks,
+                        turn_count,
+                        total_attempts,
+                        max_attempts,
+                        message_history,
+                        "Main Agent",
+                    )
+                    if should_rb:
+                        return {"error": "rollback_needed", "call": call}
+
+                    result = await self.run_sub_agent(
+                        call["server_name"],
+                        call["arguments"]["subtask"],
+                    )
+
+                    await self._record_query(cache_name, call["tool_name"], call["arguments"])
+                    return {"result": result, "call": call}
+
+                sub_agent_results = await asyncio.gather(*[run_sub(c) for c in sub_agent_calls])
+
+                # Resume main agent
+                self.current_agent_id = await self.stream.start_agent(
+                    "main", display_name="Summarizing"
+                )
+                await self.stream.start_llm("main", display_name="Summarizing")
+
+            # Third pass: run regular tool calls sequentially
+            regular_results = []
+            for call in regular_tool_calls:
+                server_name = call["server_name"]
+                tool_name = call["tool_name"]
+                arguments = call["arguments"]
+                call_id = call["id"]
+
                 arguments = self.tool_executor.fix_tool_call_arguments(
                     tool_name, arguments
                 )
 
-                call_start_time = time.time()
-                try:
-                    if server_name.startswith("agent-") and self.cfg.agent.sub_agents:
-                        # Sub-agent execution
-                        cache_name = "main_" + tool_name
-                        (
-                            is_duplicate,
-                            should_rollback,
-                            turn_count,
-                            consecutive_rollbacks,
-                            message_history,
-                        ) = await self._check_duplicate_query(
-                            tool_name,
-                            arguments,
-                            cache_name,
-                            consecutive_rollbacks,
-                            turn_count,
-                            total_attempts,
-                            max_attempts,
-                            message_history,
-                            "Main Agent",
-                        )
-                        if should_rollback:
-                            should_rollback_turn = True
-                            break
+                cache_name = "main_" + tool_name
+                (
+                    is_duplicate,
+                    should_rollback,
+                    turn_count,
+                    consecutive_rollbacks,
+                    message_history,
+                ) = await self._check_duplicate_query(
+                    tool_name,
+                    arguments,
+                    cache_name,
+                    consecutive_rollbacks,
+                    turn_count,
+                    total_attempts,
+                    max_attempts,
+                    message_history,
+                    "Main Agent",
+                )
+                if should_rollback:
+                    should_rollback_turn = True
+                    break
 
-                        # Stream events
-                        await self.stream.end_llm("main")
-                        await self.stream.end_agent("main", self.current_agent_id)
+                tool_call_id = await self.stream.tool_call(tool_name, arguments)
 
-                        # Execute sub-agent
-                        sub_agent_result = await self.run_sub_agent(
-                            server_name,
-                            arguments["subtask"],
-                        )
-
-                        # Update query count
-                        await self._record_query(cache_name, tool_name, arguments)
-
-                        tool_result = {
-                            "server_name": server_name,
-                            "tool_name": tool_name,
-                            "result": sub_agent_result,
-                        }
-                        self.current_agent_id = await self.stream.start_agent(
-                            "main", display_name="Summarizing"
-                        )
-                        await self.stream.start_llm("main", display_name="Summarizing")
-                    else:
-                        # Regular tool execution
-                        cache_name = "main_" + tool_name
-                        (
-                            is_duplicate,
-                            should_rollback,
-                            turn_count,
-                            consecutive_rollbacks,
-                            message_history,
-                        ) = await self._check_duplicate_query(
-                            tool_name,
-                            arguments,
-                            cache_name,
-                            consecutive_rollbacks,
-                            turn_count,
-                            total_attempts,
-                            max_attempts,
-                            message_history,
-                            "Main Agent",
-                        )
-                        if should_rollback:
-                            should_rollback_turn = True
-                            break
-
-                        # Send stream event
-                        tool_call_id = await self.stream.tool_call(tool_name, arguments)
-
-                        # Execute tool call
-                        tool_result = (
-                            await self.main_agent_tool_manager.execute_tool_call(
-                                server_name=server_name,
-                                tool_name=tool_name,
-                                arguments=arguments,
-                            )
-                        )
-
-                        # Update query count if successful
-                        if "error" not in tool_result:
-                            await self._record_query(cache_name, tool_name, arguments)
-
-                        # Post-process result
-                        tool_result = self.tool_executor.post_process_tool_call_result(
-                            tool_name, tool_result
-                        )
-                        result = (
-                            tool_result.get("result")
-                            if tool_result.get("result")
-                            else tool_result.get("error")
-                        )
-
-                        # Check for errors that should trigger rollback
-                        if self.tool_executor.should_rollback_result(
-                            tool_name, result, tool_result
-                        ):
-                            if (
-                                consecutive_rollbacks
-                                < self.MAX_CONSECUTIVE_ROLLBACKS - 1
-                            ):
-                                message_history.pop()
-                                turn_count -= 1
-                                consecutive_rollbacks += 1
-                                should_rollback_turn = True
-                                self.task_log.log_step(
-                                    "warning",
-                                    f"Main Agent | Turn: {turn_count} | Rollback",
-                                    f"Tool result error - tool: {tool_name}, result: '{str(result)[:200]}'",
-                                )
-                                break
-
-                        await self.stream.tool_call(
-                            tool_name, {"result": result}, tool_call_id=tool_call_id
-                        )
-
-                    call_end_time = time.time()
-                    call_duration_ms = int((call_end_time - call_start_time) * 1000)
-
-                    tool_calls_data.append(
-                        {
-                            "server_name": server_name,
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                            "result": tool_result,
-                            "duration_ms": call_duration_ms,
-                            "call_time": get_utc_plus_8_time(),
-                        }
+                tool_result = (
+                    await self.main_agent_tool_manager.execute_tool_call(
+                        server_name=server_name,
+                        tool_name=tool_name,
+                        arguments=arguments,
                     )
-                    self.task_log.log_step(
-                        "info",
-                        f"Main Agent | Turn: {turn_count} | Tool Call",
-                        f"Tool {tool_name} completed in {call_duration_ms}ms\nResult: {result}",
-                    )
+                )
 
-                except Exception as e:
-                    call_end_time = time.time()
-                    call_duration_ms = int((call_end_time - call_start_time) * 1000)
+                if "error" not in tool_result:
+                    await self._record_query(cache_name, tool_name, arguments)
 
-                    tool_calls_data.append(
-                        {
-                            "server_name": server_name,
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                            "error": str(e),
-                            "duration_ms": call_duration_ms,
-                            "call_time": get_utc_plus_8_time(),
-                        }
-                    )
-                    tool_result = {
-                        "server_name": server_name,
-                        "tool_name": tool_name,
-                        "error": str(e),
-                    }
-                    self.task_log.log_step(
-                        "error",
-                        f"Main Agent | Turn: {turn_count} | Tool Call",
-                        f"Tool {tool_name} failed to execute: {str(e)}",
-                    )
+                tool_result = self.tool_executor.post_process_tool_call_result(
+                    tool_name, tool_result
+                )
+                result = (
+                    tool_result.get("result")
+                    if tool_result.get("result")
+                    else tool_result.get("error")
+                )
 
-                # Format results for LLM
+                if self.tool_executor.should_rollback_result(
+                    tool_name, result, tool_result
+                ):
+                    if (
+                        consecutive_rollbacks
+                        < self.MAX_CONSECUTIVE_ROLLBACKS - 1
+                    ):
+                        message_history.pop()
+                        turn_count -= 1
+                        consecutive_rollbacks += 1
+                        should_rollback_turn = True
+                        self.task_log.log_step(
+                            "warning",
+                            f"Main Agent | Turn: {turn_count} | Rollback",
+                            f"Tool {tool_name} failed to execute: '{str(result)[:200]}'",
+                        )
+                        break
+
+                await self.stream.tool_call(
+                    tool_name, {"result": result}, tool_call_id=tool_call_id
+                )
+
+                regular_results.append({"result": tool_result, "call": call, "tool_call_id": tool_call_id})
+
+            # Check if any sub-agent needed rollback
+            for result in sub_agent_results:
+                if result.get("error") == "rollback_needed":
+                    should_rollback_turn = True
+                    break
+
+            if should_rollback_turn:
+                continue
+
+            # Build unified results list (sub-agents first, then regular tools)
+            all_results = []
+
+            for result in sub_agent_results:
+                if result.get("error") == "rollback_needed":
+                    continue
+                call = result["call"]
+                tool_result = {
+                    "server_name": call["server_name"],
+                    "tool_name": call["tool_name"],
+                    "result": result["result"],
+                }
+                all_results.append((call["id"], tool_result, call["server_name"], call["tool_name"], 0))
+
+            for result in regular_results:
+                call = result["call"]
+                tool_result = result["result"]
+                call_result = (
+                    tool_result.get("result")
+                    if tool_result.get("result")
+                    else tool_result.get("error")
+                )
+                all_results.append((call["id"], tool_result, call["server_name"], call["tool_name"], 0))
+
+            # Format results for LLM from unified all_results
+            for call_id, tool_result, server_name, tool_name, _ in all_results:
                 tool_result_for_llm = self.output_formatter.format_tool_result_for_user(
                     tool_result
                 )
                 all_tool_results_content_with_id.append((call_id, tool_result_for_llm))
+
+                # Log the tool call
+                call_result = (
+                    tool_result.get("result")
+                    if tool_result.get("result")
+                    else tool_result.get("error")
+                )
+                self.task_log.log_step(
+                    "info",
+                    f"Main Agent | Turn: {turn_count} | Tool Call",
+                    f"Tool {tool_name} completed. Result: {call_result}",
+                )
 
             if should_rollback_turn:
                 continue

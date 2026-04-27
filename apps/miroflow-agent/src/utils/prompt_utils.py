@@ -176,9 +176,28 @@ When you need to use a tool, you MUST call it - do NOT try to answer from memory
 - If you need to run code for calculation or data processing, use microsandbox-docker
 - NEVER guess or make up information - always search or browse to verify
 
-The available search tools include:
-- searxng: Local privacy-respecting search engine at http://127.0.0.1:8088
-- search_and_browse (MCP): Web search and browsing agent
+## When to Delegate to search_and_browse
+
+Use `search_and_browse` (server: agent-browsing) for complex web research that would require you to perform many individual search + browse cycles. The browsing agent runs its own full interaction loop — it can independently search, read URLs, extract information, and synthesize findings from dozens of sources. You delegate once and get back a consolidated answer.
+
+DELEGATE when:
+- The task requires finding information from 5+ different sources or URLs
+- You need to compare multiple products, companies, or entities across several dimensions
+- The research involves reading and synthesizing content from many web pages
+- You would need to perform more than 3-4 individual search/crawl steps to answer
+
+Do NOT delegate when:
+- A single searxng search can answer the question
+- You only need to scrape one specific URL (use tool-crawl4ai directly)
+- The task involves code execution, calculation, or document reading — use dedicated tools
+
+When delegating, be specific about what you need:
+- State the research goal clearly
+- Include any context or partial information you already know
+- Specify what format you want the answer in (table, comparison, summary, etc.)
+
+Available search tools:
+- searxng: Local privacy-respecting search engine (use duckduckgo)
 
 # OUTPUT FORMAT
 

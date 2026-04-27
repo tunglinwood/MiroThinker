@@ -57,6 +57,7 @@ export interface LogEntry {
   tool_call_id?: string;
   input?: string;
   output?: string;
+  sub_agent_name?: string;  // Set when log originates from a sub-agent
 }
 
 export interface TaskStatusUpdate {
@@ -201,4 +202,31 @@ export interface AdminTaskListResponse {
   total: number;
   page: number;
   page_size: number;
+}
+
+// Sub-agent execution state
+export interface SubAgentState {
+  id: string;
+  name: string;
+  taskDescription: string;
+  status: 'running' | 'completed' | 'failed';
+  messages: Message[];
+  toolCalls: SseToolCall[];
+  currentTurn: number;
+  stepCount: number;
+  result: string | null;
+}
+
+// Active sub-agents list (for parallel dispatch)
+export interface SubAgentTab {
+  id: string;
+  name: string;
+  taskDescription: string;
+  status: 'running' | 'completed' | 'failed';
+  messages: Message[];
+  toolCalls: SseToolCall[];
+  currentTurn: number;
+  stepCount: number;
+  result: string | null;
+  activeTab: boolean;
 }

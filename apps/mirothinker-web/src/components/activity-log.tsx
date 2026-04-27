@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Filter, MessageSquare, Hash, CheckCircle, Loader2 } from 'lucide-react';
+import { Filter, MessageSquare, Hash, CheckCircle, Loader2, Bot } from 'lucide-react';
 import type { LogEntry } from '@/lib/types';
 
 interface ActivityLogProps {
   logs: LogEntry[];
 }
 
-type LogFilter = 'all' | 'retention' | 'context' | 'status' | 'tool';
+type LogFilter = 'all' | 'retention' | 'context' | 'status' | 'tool' | 'sub_agent';
 
 const filterIcons: Record<LogFilter, typeof Filter> = {
   all: Filter,
@@ -16,6 +16,7 @@ const filterIcons: Record<LogFilter, typeof Filter> = {
   context: Hash,
   status: CheckCircle,
   tool: Loader2,
+  sub_agent: Bot,
 };
 
 const filterLabels: Record<LogFilter, string> = {
@@ -24,6 +25,7 @@ const filterLabels: Record<LogFilter, string> = {
   context: 'Context',
   status: 'Status',
   tool: 'Tools',
+  sub_agent: 'Sub-agents',
 };
 
 function classifyLogType(log: LogEntry): LogFilter {
@@ -31,6 +33,7 @@ function classifyLogType(log: LogEntry): LogFilter {
   if (log.type === 'retention') return 'retention';
   if (log.type === 'context') return 'context';
   if (log.type === 'status') return 'status';
+  if (log.type === 'tool_call' && log.sub_agent_name) return 'sub_agent';
   if (log.type === 'tool_call') return 'tool';
 
   // Fallback: classify based on content
@@ -98,10 +101,22 @@ export function ActivityLog({ logs }: ActivityLogProps) {
                 type === 'retention' ? 'bg-blue-400' :
                 type === 'context' ? 'bg-yellow-400' :
                 type === 'status' ? 'bg-green-400' :
+                type === 'sub_agent' ? 'bg-purple-400' :
                 'bg-text-muted'
               }`} />
               <div className="flex-1 min-w-0">
-                {type === 'tool' && log.tool_name ? (
+                {type === 'sub_agent' && log.tool_name ? (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-purple-400 font-medium">{log.sub_agent_name}</span>
+                      <span className="text-text-muted">/</span>
+                      <span className="text-text-secondary truncate">{log.tool_name}</span>
+                    </div>
+                    {log.output && (
+                      <p className="text-text-muted truncate">{log.output}</p>
+                    )}
+                  </div>
+                ) : type === 'tool' && log.tool_name ? (
                   <p className="text-text-secondary truncate">
                     {log.server_name ? `${log.server_name}/` : ''}{log.tool_name}
                   </p>

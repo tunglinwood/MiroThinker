@@ -296,7 +296,7 @@ def expose_sub_agents_as_tools(sub_agents_cfg: DictConfig):
                     tools=[
                         dict(
                             name="search_and_browse",
-                            description="This tool is an agent that performs the subtask of searching and browsing the web for specific missing information and generating the desired answer. The subtask should be clearly defined, include relevant background, and focus on factual gaps. It does not perform vague or speculative subtasks. \nArgs: \n\tsubtask: the subtask to be performed. \nReturns: \n\tthe result of the subtask. ",
+                            description="This tool delegates the entire subtask to a browsing agent that performs multi-step web research independently. The browsing agent can search, read URLs, and synthesize information from multiple sources — performing dozens of tool calls on your behalf. Use this for complex research tasks requiring cross-referencing multiple sources, comparative analysis, or deep investigation that would take many individual search/browse steps. Provide the subtask with: what you need to find, any context you already know, and the format you want the answer in.",
                             schema={
                                 "type": "object",
                                 "properties": {
