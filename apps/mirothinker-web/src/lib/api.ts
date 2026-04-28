@@ -107,6 +107,10 @@ export async function deleteTask(taskId: string): Promise<void> {
   await apiClient.delete(`/api/tasks/${taskId}`);
 }
 
+export async function cancelTask(taskId: string): Promise<void> {
+  await apiClient.post(`/api/tasks/${taskId}/cancel`);
+}
+
 export async function listConfigs(): Promise<ConfigListResponse> {
   const response = await apiClient.get<ConfigListResponse>('/api/configs');
   return response.data;
