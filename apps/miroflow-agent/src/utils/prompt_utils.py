@@ -18,28 +18,8 @@ This module provides:
 FORMAT_ERROR_MESSAGE = "No \\boxed{} content found in the final answer."
 
 # ============================================================================
-# Failure Experience Templates (for format error retry)
+# Failure Summary Templates (for format error retry)
 # ============================================================================
-
-# Header that appears once before all failure experiences
-FAILURE_EXPERIENCE_HEADER = """
-
-=== Previous Attempts Analysis ===
-The following summarizes what was tried before and why it didn't work. Use this to guide a NEW approach.
-
-"""
-
-# Template for each individual failure experience (used multiple times)
-FAILURE_EXPERIENCE_ITEM = """[Attempt {attempt_number}]
-{failure_summary}
-
-"""
-
-# Footer that appears once after all failure experiences
-FAILURE_EXPERIENCE_FOOTER = """=== End of Analysis ===
-
-Based on the above, you should try a different strategy this time.
-"""
 
 FAILURE_SUMMARY_PROMPT = """The task was not completed successfully. Do NOT call any tools. Provide a summary:
 
@@ -227,43 +207,6 @@ When asked to research a compound, drug, or pharmaceutical molecule, you MUST ou
 Output ONLY valid JSON in this exact format. Do not include any other text.
 """
 
-    return template
-
-
-def generate_no_mcp_system_prompt(date):
-    """
-    Generate a minimal system prompt without MCP tool definitions.
-
-    Used when no tools are available or when running in tool-less mode.
-
-    Args:
-        date: Current date object for timestamp inclusion
-
-    Returns:
-        Basic system prompt string without tool definitions
-    """
-    formatted_date = date.strftime("%Y-%m-%d")
-
-    # Start building the template, now follows https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview#tool-use-system-prompt
-    template = """In this environment you have access to a set of tools you can use to answer the user's question. """
-
-    template += f" Today is: {formatted_date}\n"
-
-    template += """
-Important Notes:
-- Tool-use must be placed **at the end** of your response, **top-level**, and not nested within other tags.
-- Always adhere to this format for the tool use to ensure proper parsing and execution.
-
-String and scalar parameters should be specified as is, while lists and objects should use JSON format. Note that spaces for string values are not stripped. The output is not expected to be valid XML and is parsed with regular expressions.
-"""
-
-    # Add the full objective system prompt
-    template += """
-# General Objective
-
-You accomplish a given task iteratively, breaking it down into clear steps and working through them methodically.
-
-"""
     return template
 
 

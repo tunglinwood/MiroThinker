@@ -31,7 +31,7 @@ def guess_mime_media_type_from_extension(file_path: str) -> str:
 
 
 @mcp.tool()
-async def visual_question_answering(image_path_or_url: str, question: str, **kwargs) -> str:
+async def visual_question_answering(image_path_or_url: str, question: str) -> str:
     """Ask question about an image or a video and get the answer with a vision language model.
 
     Args:

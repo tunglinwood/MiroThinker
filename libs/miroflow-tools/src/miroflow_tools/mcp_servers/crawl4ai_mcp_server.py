@@ -137,7 +137,6 @@ def crawl_page(
     url: str,
     include_html: bool = False,
     extract_links: bool = True,
-    wait_for_images: bool = False,
 ) -> str:
     """
     Crawl a webpage using Crawl4AI and return extracted content as markdown.
@@ -149,7 +148,6 @@ def crawl_page(
         url: The URL to crawl (must start with http:// or https://)
         include_html: Include cleaned HTML in response (default: False)
         extract_links: Extract and return internal/external links (default: True)
-        wait_for_images: Wait for images to load before extraction (default: False)
 
     Returns:
         Formatted markdown content with metadata, links, and media info.

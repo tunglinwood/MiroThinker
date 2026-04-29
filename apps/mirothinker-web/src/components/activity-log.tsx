@@ -84,7 +84,7 @@ export function ActivityLog({ logs }: ActivityLogProps) {
       </div>
 
       {/* Log entries */}
-      <div className="max-h-64 overflow-y-auto p-3 space-y-1.5">
+      <div className="p-3 space-y-1.5">
         {filteredLogs.length === 0 && (
           <p className="text-xs text-text-muted text-center py-4">No {filter} events</p>
         )}
@@ -110,14 +110,14 @@ export function ActivityLog({ logs }: ActivityLogProps) {
                     <div className="flex items-center gap-1.5">
                       <span className="text-purple-400 font-medium">{log.sub_agent_name}</span>
                       <span className="text-text-muted">/</span>
-                      <span className="text-text-secondary truncate">{log.tool_name}</span>
+                      <span className="text-text-secondary break-words">{log.tool_name}</span>
                     </div>
                     {log.output && (
-                      <p className="text-text-muted truncate">{log.output}</p>
+                      <p className="text-text-muted break-words">{log.output}</p>
                     )}
                   </div>
                 ) : type === 'tool' && log.tool_name ? (
-                  <p className="text-text-secondary truncate">
+                  <p className="text-text-secondary break-words">
                     {log.server_name ? `${log.server_name}/` : ''}{log.tool_name}
                   </p>
                 ) : (
@@ -145,13 +145,13 @@ function getLogDisplay(log: LogEntry): string {
     // Show only the meaningful part, stripping emoji prefixes
     const cleanStep = stepName.replace(/[\u{1F300}-\u{1F9FF}]\u{FE0F}?/gu, '').trim();
 
-    // For retention entries, show a truncated summary
-    if (log.type === 'retention' && message.length > 150) {
-      return `${cleanStep}: ${message.slice(0, 150)}...`;
+    // For retention entries, show full message
+    if (log.type === 'retention') {
+      return `${cleanStep}: ${message}`;
     }
-    return `${cleanStep}: ${message.length > 200 ? message.slice(0, 200) + '...' : message}`;
+    return `${cleanStep}: ${message}`;
   }
 
   // Fallback: show input directly
-  return input.length > 200 ? input.slice(0, 200) + '...' : input;
+  return input;
 }

@@ -3,50 +3,15 @@
 
 import json
 import os
-from typing import Any, Dict
 
 import requests
 from mcp.server.fastmcp import FastMCP
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
-
-from .utils import decode_http_urls_in_dict
 
 # SearXNG Configuration
 SEARXNG_BASE_URL = os.getenv("SEARXNG_BASE_URL", "http://127.0.0.1:8080")
-SEARXNG_API_KEY = os.getenv("SEARXNG_API_KEY", "")  # Not required for local SearXNG
 
 # Initialize FastMCP server
 mcp = FastMCP("searxng-mcp-server")
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(
-        (requests.ConnectionError, requests.Timeout, requests.HTTPError)
-    ),
-)
-def make_searxng_request(query: str, num_results: int = 20) -> requests.Response:
-    """Make HTTP request to SearXNG API."""
-    # SearXNG API endpoint
-    url = f"{SEARXNG_BASE_URL}/search"
-
-    params = {
-        "q": query,
-        "format": "json",
-        "engines": "duckduckgo",
-        "language": "en",
-        "num_results": num_results,
-    }
-
-    response = requests.get(url, params=params, timeout=60)
-    response.raise_for_status()
-    return response
 
 
 @mcp.tool()
@@ -90,13 +55,11 @@ def searxng_search(
         url = f"{SEARXNG_BASE_URL}/search"
 
         # Choose engines based on category
-        # DuckDuckGo is primary general search — consistently returns relevant, current results.
-        # Startpage blocked by CAPTCHA; Brave rate-limited; Qwant suspended.
-        # Bing excluded — low relevance for brand-name and company queries.
+        # All working engines verified 2026-04-29
         if category == "science":
             engines = "pubmed,google scholar,semantic scholar,crossref,arxiv"
         else:
-            engines = "duckduckgo"
+            engines = "brave,duckduckgo,bing,startpage,yandex,mojecha,sepiya,ask,sogou,presearch"
 
         params = {
             "q": q.strip(),
@@ -149,12 +112,6 @@ def searxng_search(
             {"success": False, "error": f"Unexpected error: {str(e)}", "results": []},
             ensure_ascii=False,
         )
-
-
-# Alias for compatibility with existing code
-def google_search(q: str, **kwargs) -> str:
-    """Alias for searxng_search for backward compatibility."""
-    return searxng_search(q, **kwargs)
 
 
 if __name__ == "__main__":

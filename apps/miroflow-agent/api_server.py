@@ -18,6 +18,7 @@ sys.path.insert(0, str(project_root))
 
 # Load environment variables
 dotenv.load_dotenv(project_root / ".env")
+dotenv.load_dotenv(project_root / ".env.local", override=True)
 
 from api.dependencies import init_dependencies, get_task_executor
 from api.routes import tasks_router, health_router, configs_router, uploads_router, auth_router, admin_router, smart_search_router

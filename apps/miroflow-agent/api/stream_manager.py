@@ -94,9 +94,6 @@ class StreamManager:
         except Exception as e:
             await self.publish(task_id, {"event": "error", "data": {"error": str(e)}})
 
-    def get_buffer(self, task_id: str) -> list[dict]:
-        """Get buffered events for a task (for late subscribers)."""
-        return list(self._buffer.get(task_id, []))
 
 
 # Global instance

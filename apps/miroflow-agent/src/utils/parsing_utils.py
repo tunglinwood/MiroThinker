@@ -131,60 +131,6 @@ def filter_none_values(arguments: Union[Dict, Any]) -> Union[Dict, Any]:
     return {k: v for k, v in arguments.items() if v is not None}
 
 
-def _fix_backslash_escapes(json_str: str) -> str:
-    """
-    Fix common backslash escape issues in JSON strings.
-    This handles cases where backslashes in string values are not properly escaped.
-
-    Common issues:
-    - Unescaped backslashes before non-escape characters
-
-    Note: This is a conservative fix that preserves valid escape sequences
-    (\\, \", \/, \b, \f, \n, \r, \t) and only fixes clearly problematic cases.
-    """
-    fixed_str = json_str
-
-    # Fix backslashes that are not part of valid escape sequences
-    # Valid JSON escape sequences: \\, \", \/, \b, \f, \n, \r, \t, \uXXXX
-    # Pattern: backslash not followed by a valid escape character
-    # This regex matches \ followed by anything except valid escape chars
-    # But we need to be careful not to match already-escaped backslashes (\\)
-
-    # Strategy: Find all backslashes, but skip those that are:
-    # 1. Already escaped (\\)
-    # 2. Part of valid escape sequences (\", \/, \b, \f, \n, \r, \t, \u)
-
-    # More conservative approach: Only fix backslashes before uppercase letters
-    # (common in Windows paths) and other clearly problematic patterns
-    # This avoids breaking valid JSON escape sequences
-
-    # Fix backslashes before uppercase letters (Windows paths like C:\Users)
-    fixed_str = re.sub(
-        r"(?<!\\)\\([A-Z])",  # Backslash before uppercase letter, not already escaped
-        r"\\\\\1",
-        fixed_str,
-    )
-
-    # Fix backslashes before digits (common in paths like \1, \2)
-    fixed_str = re.sub(
-        r"(?<!\\)\\([0-9])",  # Backslash before digit, not already escaped
-        r"\\\\\1",
-        fixed_str,
-    )
-
-    # Fix other unescaped backslashes that are not part of valid escape sequences
-    # This is more aggressive but should be safe after json_repair fails
-    # Valid escape chars: \\, ", /, b, f, n, r, t, u
-    # Use a capturing group to preserve the character after backslash
-    fixed_str = re.sub(
-        r'(?<!\\)\\([^\\"/bfnrtu])',  # Backslash followed by invalid escape char
-        r"\\\\\1",  # Escape it and preserve the character
-        fixed_str,
-    )
-
-    return fixed_str
-
-
 def safe_json_loads(arguments_str: str) -> Dict[str, Any]:
     """
     Safely parse a JSON string with multiple fallbacks.
