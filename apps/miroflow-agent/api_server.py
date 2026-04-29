@@ -20,7 +20,7 @@ sys.path.insert(0, str(project_root))
 dotenv.load_dotenv(project_root / ".env")
 
 from api.dependencies import init_dependencies, get_task_executor
-from api.routes import tasks_router, health_router, configs_router, uploads_router, auth_router, admin_router
+from api.routes import tasks_router, health_router, configs_router, uploads_router, auth_router, admin_router, smart_search_router
 from hydra import compose, initialize_config_dir
 
 
@@ -100,6 +100,7 @@ app.include_router(configs_router)
 app.include_router(uploads_router)
 app.include_router(auth_router)
 app.include_router(admin_router)
+app.include_router(smart_search_router)
 
 
 @app.get("/")
@@ -112,6 +113,7 @@ async def root():
         "health": "/api/health",
         "tasks": "/api/tasks",
         "configs": "/api/configs",
+        "smart_search": "/api/smart-search",
     }
 
 

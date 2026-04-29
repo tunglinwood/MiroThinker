@@ -90,8 +90,75 @@ function renderToolCall(tc: SseToolCall) {
     );
   }
 
-  // show_text — intermediate step info
-  if (name.includes('show_text') || name.includes('show_message') || name === 'print') {
+  // show_text — this is the LLM's response text, render as styled assistant message
+  if (name.includes('show_text') || name.includes('show_message')) {
+    // Extract the actual text content from input or result
+    let content = '';
+    if (typeof tc.input?.text === 'string') {
+      content = tc.input.text;
+    } else if (tc.result && typeof tc.result === 'string') {
+      // Result may be JSON-stringified {text: "..."} or raw text
+      if (tc.result.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(tc.result);
+          content = parsed.text || '';
+        } catch {
+          // Not valid JSON, use as-is
+          content = tc.result;
+        }
+      } else {
+        content = tc.result;
+      }
+    }
+
+    if (!content) {
+      // Still running or no content — show pending indicator
+      return (
+        <div key={tc.tool_call_id} className="flex items-start gap-3">
+          <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0">
+            <Loader2 className="w-4 h-4 text-text-muted animate-spin" />
+          </div>
+          <div className="flex-1">
+            <span className="text-sm font-medium text-text-secondary">Responding</span>
+          </div>
+        </div>
+      );
+    }
+    const parsed = parseMessageContent(content);
+    return (
+      <div key={tc.tool_call_id} className="space-y-3">
+        {parsed.thinking && (
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center flex-shrink-0">
+              <Brain className="w-4 h-4 text-accent" />
+            </div>
+            <div className="flex-1 bg-accent/5 border border-accent/10 rounded-xl p-3">
+              <span className="text-xs font-medium text-accent">Thinking</span>
+              <pre className="text-sm text-text-secondary whitespace-pre-wrap leading-relaxed overflow-x-auto mt-1">
+                {parsed.thinking}
+              </pre>
+            </div>
+          </div>
+        )}
+        {parsed.text && (
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center flex-shrink-0 text-xs font-medium">
+              A
+            </div>
+            <div className="flex-1 bg-surface border border-border rounded-xl px-3 py-2 markdown-content">
+              <div
+                className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(parsed.text) }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // print — show as intermediate step
+  if (name === 'print') {
     return (
       <IntermediateSteps
         key={tc.tool_call_id}
@@ -183,11 +250,12 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
     });
   };
 
-  // Auto-expand the last turn when running
+  // Auto-expand all turns when running; collapse individually when user toggles
   if (status === 'running' && turns.length > 0) {
-    const lastTurn = turns[turns.length - 1].turn;
-    if (!expandedTurns.has(lastTurn)) {
-      setExpandedTurns((prev) => new Set([...prev, lastTurn]));
+    const allTurnNumbers = turns.map((t) => t.turn);
+    const allExpanded = allTurnNumbers.every((n) => expandedTurns.has(n));
+    if (!allExpanded) {
+      setExpandedTurns(new Set(allTurnNumbers));
     }
   }
 
@@ -209,12 +277,14 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
   }, [liveToolCalls]);
 
   // Collect show_text / intermediate steps separately
+  // NOTE: show_text is the LLM's response text, already captured in messages via SSE message events.
+  // We only collect genuine intermediate steps (show_message, print) here.
   const intermediateSteps = useMemo(() => {
     const steps: Array<{ text: string; type?: 'info' | 'success' | 'warning' | 'error' }> = [];
     const tools = liveToolCalls || [];
     for (const tc of tools) {
       const name = tc.tool_name.toLowerCase();
-      if (name.includes('show_text') || name.includes('show_message')) {
+      if (name.includes('show_message') || name === 'print') {
         steps.push({ text: tc.result || JSON.stringify(tc.input) || tc.tool_name, type: 'info' });
       }
     }
@@ -281,6 +351,20 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
           ))}
         </div>
       )}
+
+      {/* Live tool calls for turns that haven't received end_of_turn yet */}
+      {liveToolCalls && liveToolCalls.length > 0 && turns.length > 0 && (() => {
+        const latestTurn = turns[turns.length - 1]?.turn ?? 0;
+        const pendingTools = liveToolCalls.filter(tc => tc.turn > latestTurn);
+        if (pendingTools.length === 0) return null;
+        return (
+          <div className="space-y-4">
+            {pendingTools.map((tc) => (
+              <ToolRenderer key={tc.tool_call_id} toolCall={tc} />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Turn groups (from telemetry) */}
       {turns.map((turn) => {
@@ -377,15 +461,22 @@ export function TurnTimeline({ status, messages, turns, stepCount, liveToolCalls
                   );
                 })}
 
-                {/* Live tool calls for this turn */}
+                {/* Live tool calls for this turn (SSE-format, real-time) */}
                 {liveToolsForTurn.map((tc) => (
-                  <ToolRenderer key={tc.tool_call_id} toolCall={tc} />
+                  <ToolRenderer key={`live-${tc.tool_call_id}`} toolCall={tc} />
                 ))}
 
                 {/* Telemetry tool calls — use ToolCallCard for full result display */}
-                {turn.toolCalls.map((tc, tcIdx) => (
-                  <ToolCallCard key={tcIdx} toolCall={tc as ToolCallTelemetry} index={tcIdx} />
-                ))}
+                {turn.toolCalls.map((tc, tcIdx) => {
+                  // Skip if already rendered as a live tool (same tool_name + turn)
+                  const isDuplicate = liveToolsForTurn.some(
+                    (lt) => lt.tool_name === tc.tool_name && lt.turn === turn.turn
+                  );
+                  if (isDuplicate) return null;
+                  return (
+                    <ToolCallCard key={`telemetry-${tcIdx}`} toolCall={tc as ToolCallTelemetry} index={tcIdx} />
+                  );
+                })}
               </div>
             )}
           </div>

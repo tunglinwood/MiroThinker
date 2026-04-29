@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MiroThinker is an agent framework for complex task solving with LLMs and MCP (Model Context Protocol) tools. It achieved 88.2% on BrowseComp benchmark. The project consists of:
 
 - **apps/miroflow-agent**: Main agent framework with Hydra-based configuration + REST API
-- **apps/mirothinker-web**: Next.js 14 web frontend with SSE streaming, auth, and admin dashboard
+- **apps/mirothinker-web**: Next.js 15 web frontend (React 19) with SSE streaming, JWT auth, and admin dashboard
 - **libs/miroflow-tools**: MCP server collection providing tools (code execution, web search, vision, reasoning, document reading)
 
 ## Quick Commands
@@ -126,17 +126,33 @@ Key API design patterns:
 
 ### Web App (apps/mirothinker-web/)
 
-Next.js 14 app router with React Server Components.
+Next.js 15 app router with React 19, Tailwind CSS v4, and React Server Components.
 
-- **src/app/page.tsx**: Main page — task list, chat input, turn timeline, activity log
+**Key components:**
+- **src/app/page.tsx**: Main page — task list, chat input, turn timeline, activity log. Constructs `turnData` from SSE events: `sseTurns` drive turn headers, `liveToolCalls` drive per-turn tool rendering, messages attach to the latest turn.
 - **src/app/admin/page.tsx**: Admin dashboard — service health, user list, all tasks
-- **src/components/turn-timeline.tsx**: Displays agent turns with thinking blocks and tool calls
+- **src/components/turn-timeline.tsx**: Displays agent turns with thinking blocks, tool calls (`ToolRenderer` → `renderToolCall`), and sub-agent traces. `show_text` tool calls render as styled assistant messages (not raw JSON). `IntermediateSteps` only collects `show_message` and `print` tool calls.
+- **src/components/tool-renderer.tsx**: Wrapper that dispatches `renderToolCall` for live SSE tool calls, routing to `ToolCallCard` for telemetry display.
+- **src/components/intermediate-steps.tsx**: Shows agent progress steps as blue info badges.
 - **src/components/chat-input.tsx**: Text input with file upload and example prompts
 - **src/components/sidebar.tsx**: Chat history sidebar with task list
+
+**Key libraries:**
 - **src/lib/api.ts**: API client functions (auth, tasks, admin, SSE)
-- **src/lib/sse.ts**: SSE client for real-time task streaming
-- **src/lib/parser.ts**: Parses LLM responses — extracts `<use_mcp_tool>`, `<tool_result>`, `<think>`, `` XML tags
+- **src/lib/sse.ts**: SSE client for real-time task streaming. Creates `SseToolCall` objects with `input`, `result`, `status` fields. `tool_input` events set `tc.input` and `tc.result = JSON.stringify(input)`. `tool_result` events set `tc.result` to the actual output.
+- **src/lib/parser.ts**: Parses LLM responses — extracts `<use_mcp_tool>`, `<tool_result>`, `<think>`, `` XML tags. `parseMessageContent()` returns `{thinking, text}` for rendering.
 - **src/lib/markdown.ts**: Simple markdown-to-HTML renderer
+
+**SSE data flow:**
+1. Backend emits SSE events: `message`, `tool_call`, `tool_input`, `tool_result`, `end_of_turn`, `final_answer`
+2. `sse.ts` parses events into `SseToolCall` objects, populating `toolCallsRef` and `turnsRef`
+3. `page.tsx` reads refs on each SSE update, computes `turnData` grouping tools by turn number
+4. `turn-timeline.tsx` renders each turn using `renderToolCall` for live tools and `parseMessageContent` for text extraction
+
+**Dev server troubleshooting:**
+- Port 3002 conflicts: run `fuser -k 3002/tcp` before `npm run dev`
+- Stale bundle cache: `rm -rf .next` and restart dev server
+- Next.js 15 turbopack may show opaque errors; check full output in terminal
 
 ### LLM Layer (apps/miroflow-agent/src/llm/)
 
@@ -244,6 +260,27 @@ Tasks are stored in-memory with `threading.RLock()` protection and persisted to 
 - Test markers: `unit`, `integration`, `slow`, `requires_api_key`
 
 ## Important Design Notes
+
+### SSE Tool Call Lifecycle
+
+`SseToolCall` objects in `sse.ts` have these key fields:
+- `tool_call_id`: Unique identifier for the tool call
+- `tool_name`: Name of the tool (e.g., `show_text`, `show_message`, `print`)
+- `input`: Object containing the tool input (for `show_text`, `{text: "..."}`)
+- `result`: String — initially `JSON.stringify(input)` on `tool_input` event, replaced with actual output on `tool_result` event
+- `status`: `'pending'` → `'running'` → `'completed'` | `'failed'`
+- `turn`: Turn number from the backend
+
+When working on SSE rendering:
+- `show_text` carries the LLM's response text and should render as styled assistant content
+- `show_message` and `print` are intermediate steps shown in the "Agent progress" section
+- Other tool calls render as `ToolCallCard` components
+
+### Next.js 15 Turbopack
+
+Next.js 15 uses turbopack in dev mode. Build errors may show "Errors: 1" without details. To debug:
+- Check the terminal output for full error messages
+- Clear `.next` cache if changes don't appear to take effect
 
 ### MCP Server Parameters
 

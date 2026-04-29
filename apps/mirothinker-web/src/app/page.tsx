@@ -134,17 +134,33 @@ export default function Home() {
 
   // Build turn data — prefer SSE-derived turns during execution, telemetry for completed tasks
   const turnData = useMemo(() => {
-    // During execution, use SSE-derived turns directly
+    // During execution, use SSE-derived turns with structured tool calls
     if (sseTurns && sseTurns.length > 0 && isActive(selectedTask)) {
-      return sseTurns.map((turn) => ({
-        turn: turn.turn,
-        messages: [] as Message[],
-        toolCalls: turn.tool_calls,
-        input_tokens: turn.input_tokens,
-        output_tokens: turn.output_tokens,
-        context_tokens: turn.context_tokens,
-        context_limit: turn.context_limit,
-      }));
+      const allMsgs = accumulatedMessages.length > 0 ? accumulatedMessages : (sseData?.messages || []);
+      const userAndAssistant = allMsgs.filter(
+        (m) => m.role === 'user' || m.role === 'assistant'
+      );
+      const systemMsgs = allMsgs.filter((m) => m.role === 'system');
+
+      // Attach ALL messages to the most recent turn, rather than dividing evenly.
+      // This ensures the current turn has full context while earlier turns show
+      // their tool calls as structured data.
+      const turnsWithMessages = sseTurns.map((turn, idx) => {
+        const isLatest = idx === sseTurns.length - 1;
+        return {
+          turn: turn.turn,
+          messages: isLatest
+            ? [...userAndAssistant, ...systemMsgs] as Message[]
+            : [] as Message[],
+          toolCalls: turn.tool_calls,
+          input_tokens: turn.input_tokens,
+          output_tokens: turn.output_tokens,
+          context_tokens: turn.context_tokens,
+          context_limit: turn.context_limit,
+        };
+      });
+
+      return turnsWithMessages;
     }
 
     // For completed tasks, use telemetry with message distribution
@@ -184,7 +200,7 @@ export default function Home() {
     }
 
     return turnsWithMessages;
-  }, [sseTurns, telemetry, isActive(selectedTask), (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined), messages]);
+  }, [sseTurns, sseData?.messages, accumulatedMessages, telemetry, isActive(selectedTask), (currentStatus && 'messages' in currentStatus ? currentStatus.messages : undefined), messages]);
 
   // Build log entries from recent_logs (backend format: step_name, message, info_level)
   const logEntries = useMemo((): LogEntry[] => {
@@ -446,7 +462,7 @@ export default function Home() {
                     <Square className="w-4 h-4 text-text-muted" />
                   </div>
                   <div className="flex-1 bg-surface border border-border rounded-lg p-4">
-                    <p className="text-text-muted">Task was stopped.</p>
+                    <p className="text-text-muted font-medium">Job stopped.</p>
                   </div>
                 </div>
               )}
